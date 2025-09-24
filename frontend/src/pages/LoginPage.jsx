@@ -95,7 +95,7 @@ export default function Login() {
     <Page>
       <Card>
         <Logo src={clyvaraIcon} alt="Clyvara" />
-        <Title>Log in</Title>
+        <Title>Log in!</Title>
 
         <Form onSubmit={onSubmit}>
           <Field>
