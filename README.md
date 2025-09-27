@@ -4,6 +4,7 @@ New Clyvara website F2025
 ## Setup
 
 create virtual environment
+
 python -m venv (name_of_env)
 source name_of_env/bin/activate
 
