@@ -1,7 +1,7 @@
 import { useState } from "react";
 import styled from "styled-components";
 import Header from "./components/Header.jsx"
-import RandomWordButton from "./components/RandomWordButton";
+import ChatBot from "./components/ChatBot.jsx"
 
 const Container = styled.div`
   display: flex;
@@ -14,7 +14,7 @@ const Container = styled.div`
 //everything below header
 const BodyContainer = styled.div`
   width: 100%;
-  margin-bottom: 10rem;
+  margin-bottom: 5rem;
 `;
 
 const Columns = styled.div`
@@ -136,7 +136,8 @@ export default function App() {
               )}
             </Columns>
           </BodyContainer>
-          <RandomWordButton/>
+
+          <ChatBot/>
         </Container>
   );
 }
