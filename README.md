@@ -11,6 +11,10 @@ source name_of_env/bin/activate
 install requirements:
 pip install -r requirements.txt
 
+
+.env file:
+add openai api secret key
+
 ## Start developing:
 
 create a new branch -> git checkout -b (branch_name)
