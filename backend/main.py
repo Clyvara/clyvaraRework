@@ -79,6 +79,13 @@ def chat(payload: ChatIn):
     thread_id = payload.thread_id or str(uuid4())
     prev = SESSIONS.get(thread_id)
 
+    if payload.message.lower().strip() in {"bye", "close"}:
+        SESSIONS.pop(thread_id, None)
+        return ChatOut(
+            reply="Chat closed.",
+            thread_id=thread_id
+        )
+
     resp = client.responses.create(
         model="gpt-5-nano",
         input=payload.message,
