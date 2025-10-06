@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import styled from "styled-components";
+import { buildDomManifest, summarizePageContext } from "../utils/pageContext.js";
 
 const ChatWrap = styled.div`
   display: grid;
@@ -110,12 +111,21 @@ const Dot = styled.span`
 
 export default function Chat() {
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hi! Ask me anything." },
+    { role: "assistant", text: "Hi! Ask me about Clyvara or any questions you might have about medicine!" },
   ]);
   const [input, setInput] = useState("");
-  const [threadId, setThreadId] = useState(null);
+  const [threadId, setThreadId] = useState(() => sessionStorage.getItem("thread_id") || null);
   const [loading, setLoading] = useState(false);
   const scrollerRef = useRef(null);
+
+  useEffect(() => {
+    if (threadId) sessionStorage.setItem("thread_id", threadId);
+  }, [threadId]);
+
+  const pageContext = useMemo(() => {
+    const ctx = buildDomManifest();
+    return summarizePageContext(ctx);
+  }, [window.location.pathname, document.title]);
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({
@@ -137,7 +147,11 @@ export default function Chat() {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, thread_id: threadId }),
+        body: JSON.stringify({
+          message: text,
+          thread_id: threadId,
+          page_context: pageContext,
+        }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
