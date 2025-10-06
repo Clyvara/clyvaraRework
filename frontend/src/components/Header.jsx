@@ -44,7 +44,7 @@ const Header = () => {
             <HeaderInner>
                 <div />
                 <Logo src={clyvaraIcon} alt="Clyvara logo" />
-                <LoginButton to="/login">Log in</LoginButton>
+                <LoginButton to="/login">Log in / Sign Up</LoginButton>
             </HeaderInner>
         </Container>
     );
