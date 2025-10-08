@@ -5,6 +5,7 @@ import ChatBot from "./components/ChatBot.jsx";
 import BackEndTesting from "./components/BackEndTesting.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import GoogleSignInButton from './components/GoogleSignInButton.jsx'; 
 
 const Container = styled.div`
   display: flex;

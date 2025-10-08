@@ -3,6 +3,7 @@ import styled from "styled-components";
 import { Link, useNavigate } from "react-router-dom";
 import clyvaraIcon from "../assets/clyvaraIcon.png";
 import { supabase } from "../utils/supabaseClient";
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const Page = styled.div`
   min-height: 100vh;
@@ -182,6 +183,8 @@ export default function Login() {
               </Toggle>
             </PasswordRow>
           </Field>
+
+          <GoogleSignInButton />
 
           <Button type="submit" disabled={loading}>
             {loading ? "Signing in…" : "Log In"}
