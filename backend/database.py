@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database setup
+
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -133,10 +133,10 @@ def test_connection():
         with engine.connect() as connection:
             from sqlalchemy import text
             result = connection.execute(text("SELECT 1"))
-            print("✅ Database connection successful!")
+            print("Database connection successful!")
             return True
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+        print(f"Database connection failed: {e}")
         return False
 
 if __name__ == "__main__":
