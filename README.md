@@ -27,7 +27,6 @@ Create a `.env.local` file in /frontend and add your OpenAI API secret key:
 ```
 VITE_SUPABASE_URL= "supabase_url_here"
 VITE_SUPABASE_ANON_KEY="your_secret_key_here"
-
 ```
 
 ---
