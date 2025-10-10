@@ -16,10 +16,18 @@ source <env_name>/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment variables
-Create a `.env` file in the project root and add your OpenAI API secret key:
+### 3. Configure backend environment variables (OpenAI)
+Create a `.env` file in /backend and add your OpenAI API secret key:
 ```
-OPENAI_API_KEY=your_secret_key_here
+OPENAI_API_KEY="your_secret_key_here"
+```
+
+### 4. Configure frontend environment variables (Supabase)
+Create a `.env.local` file in /frontend and add your OpenAI API secret key:
+```
+VITE_SUPABASE_URL= "supabase_url_here"
+VITE_SUPABASE_ANON_KEY="your_secret_key_here"
+
 ```
 
 ---
