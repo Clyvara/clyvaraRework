@@ -1,54 +1,50 @@
 import clyvaraIcon from "../assets/clyvaraIcon.png";
-import { useState } from "react";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 
-//logo and login
-const Container = styled.header`
+const Container = styled.div`
   width: 100%;
+  height: 196px;
   display: flex;
-  justify-content: center;
-  padding: 0.75rem 1rem;
-  margin-bottom: 2rem;
-`;
-
-const HeaderInner = styled.div`
-  width: 100%;
-  max-width: 1200px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  background: #20359A;
+  padding: 0 2rem;
 `;
 
 const Logo = styled.img`
-  width: 100%;
-  height: 100%;
+  height: 80%;
+  max-height: 150px;
+  object-fit: contain;
 `;
 
-const LoginButton = styled(Link)`
-  justify-self: end;
-  padding: 0.55rem 1rem;
-  border: 0;
-  border-radius: 10px;
-  background: #111827;
-  color: #fff;
+const NavLinks = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+`;
+
+const NavLink = styled(Link)`
+  color: #ffffff;
   font-weight: 600;
-  cursor: pointer;
-  &:hover { opacity: 0.9; }
+  font-size: 1.1rem;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+    opacity: 0.9;
+  }
 `;
 
 const Header = () => {
-    return (
-        <Container>
-            <HeaderInner>
-                <div />
-                <Logo src={clyvaraIcon} alt="Clyvara logo" />
-                <LoginButton to="/login">Log in / Sign Up</LoginButton>
-            </HeaderInner>
-        </Container>
-    );
+  return (
+    <Container>
+      <Logo src={clyvaraIcon} alt="Clyvara logo" />
+      <NavLinks>
+        <NavLink to="/pricing">Pricing</NavLink>
+        <NavLink to="/login">Login</NavLink>
+      </NavLinks>
+    </Container>
+  );
 };
 
 export default Header;
-
