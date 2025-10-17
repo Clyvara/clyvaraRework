@@ -1,21 +1,40 @@
-import clyvaraIcon from "../assets/clyvaraIcon.png";
+import clyvaranewlogo from "../assets/clyvaranewlogo.svg";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 
 const Container = styled.div`
-  width: 100%;
+  width: 100vw;
   height: 196px;
+  background: #20359A;
+  color: #E7A0CC;
+
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #20359A;
-  padding: 0 2rem;
+  padding: 0 58px;
+  box-sizing: border-box;
+`;
+
+const LeftGroup = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-decoration: none;
+  color: inherit;
 `;
 
 const Logo = styled.img`
   height: 80%;
-  max-height: 150px;
+  max-height: 100px;
   object-fit: contain;
+`;
+
+const Title = styled.h1`
+  font-size: 72px;
+  font-weight: 700;
+  margin: 0;
+  color: #E7A0CC;
+  font-family: 'Rethink Sans';
 `;
 
 const NavLinks = styled.div`
@@ -25,12 +44,13 @@ const NavLinks = styled.div`
 `;
 
 const NavLink = styled(Link)`
-  color: #ffffff;
-  font-weight: 600;
-  font-size: 1.1rem;
+  color: #E7A0CC;
+  font-weight: 700;
+  font-size: 50px;
+  font-family: 'Rethink Sans';
   text-decoration: none;
+
   &:hover {
-    text-decoration: underline;
     opacity: 0.9;
   }
 `;
@@ -38,10 +58,14 @@ const NavLink = styled(Link)`
 const Header = () => {
   return (
     <Container>
-      <Logo src={clyvaraIcon} alt="Clyvara logo" />
+      <LeftGroup to="/">
+        <Logo src={clyvaranewlogo} alt="Clyvara logo" />
+        <Title>Clyvara</Title>
+      </LeftGroup>
+
       <NavLinks>
         <NavLink to="/pricing">Pricing</NavLink>
-        <NavLink to="/login">Login</NavLink>
+        <NavLink to="/login">Start for free</NavLink>
       </NavLinks>
     </Container>
   );
