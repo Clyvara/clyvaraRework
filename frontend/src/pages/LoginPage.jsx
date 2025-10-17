@@ -9,7 +9,7 @@ const Page = styled.div`
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #6cb7bb;
+  background: #ADCAF0;
   padding: 2rem 1rem;
 `;
 

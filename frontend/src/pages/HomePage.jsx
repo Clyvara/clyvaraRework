@@ -28,11 +28,14 @@ const Body = styled.div`
 
 export default function HomePage() {
   return (
-    <Container>
-      <Header />
-      <Body>
-        {/* <ChatBot /> */}
-      </Body>
-    </Container>
+    <div>
+        <Header />
+        <Container>
+            <Body>
+            { /* <ChatBot /> */}
+            </Body>
+        </Container>
+    </div>
+    
   );
 }
