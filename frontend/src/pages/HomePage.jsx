@@ -4,6 +4,7 @@
 import styled from "styled-components";
 import Header from "../components/Header.jsx";
 import ChatBot from "../components/ChatBot.jsx";
+import Footer from "../components/Footer.jsx";
 
 const Container = styled.div`
   display: flex;
@@ -35,7 +36,7 @@ export default function HomePage() {
             { /* <ChatBot /> */}
             </Body>
         </Container>
+        <Footer />
     </div>
-    
   );
 }
