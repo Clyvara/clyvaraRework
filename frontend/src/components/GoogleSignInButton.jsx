@@ -19,9 +19,9 @@ export default function GoogleSignInButton() {
       style={{
         backgroundColor: '#4285F4',
         color: 'white',
-        padding: '10px 16px',
+        padding: '12.8px, 15.2px',
         border: 'none',
-        borderRadius: '4px',
+        borderRadius: '999px',
         cursor: 'pointer',
         fontWeight: 'bold'
       }}
