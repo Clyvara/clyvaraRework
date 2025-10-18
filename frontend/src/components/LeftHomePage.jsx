@@ -1,0 +1,55 @@
+import styled from "styled-components";
+import { Link } from "react-router-dom";
+
+const Container = styled.div`
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 2rem;
+  font-family: "Rethink Sans";
+`;
+
+const Box = styled.div`
+  width: 48%;
+  height: 300px;
+  flex-shrink: 0;
+  background: #e9ebf3;
+  border-radius: 48px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+`;
+
+const ButtonRow = styled.div`
+  display: flex;
+  gap: 1rem;
+`;
+
+const Button = styled(Link)`
+  padding: 0.7rem 2rem;
+  border: 2px solid #111827;
+  border-radius: 999px;
+  background: white;
+  color: #111827;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background: #111827;
+    color: #fff;
+  }
+`;
+
+export default function LeftHomePage() {
+  return (
+    <Container>
+      <Box />
+      <ButtonRow>
+        <Button to="/signup">Get started</Button>
+        <Button to="/login">Log in</Button>
+      </ButtonRow>
+    </Container>
+  );
+}

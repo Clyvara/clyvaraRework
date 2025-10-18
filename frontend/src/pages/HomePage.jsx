@@ -5,26 +5,16 @@ import styled from "styled-components";
 import Header from "../components/Header.jsx";
 import ChatBot from "../components/ChatBot.jsx";
 import Footer from "../components/Footer.jsx";
+import Branie from "../components/Branie.jsx";
+import LeftHomePage from "../components/LeftHomePage.jsx";
 
 const Container = styled.div`
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   width: 100%;
-  gap: 1.5rem;
-  min-height: 100dvh;
+  height: auto;
   background: #ADCAF0;
-`;
-
-const Body = styled.div`
-  width: 100%;
-  max-width: 1200px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 1rem;
-  padding-bottom: 5rem;
 `;
 
 export default function HomePage() {
@@ -32,9 +22,8 @@ export default function HomePage() {
     <div>
         <Header />
         <Container>
-            <Body>
-            { /* <ChatBot /> */}
-            </Body>
+          <LeftHomePage/>
+          <Branie/>
         </Container>
         <Footer />
     </div>
