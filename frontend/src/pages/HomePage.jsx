@@ -8,24 +8,30 @@ import Footer from "../components/Footer.jsx";
 import Branie from "../components/Branie.jsx";
 import LeftHomePage from "../components/LeftHomePage.jsx";
 
-const Container = styled.div`
-  display: flex;
-  flex-direction: row;
+const Container = styled.main`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
+  justify-content: space-between;
+  gap: 3rem;
   width: 100%;
-  height: auto;
+  min-height: calc(100vh - 196px);
   background: #ADCAF0;
+  padding: 48px 58px;
+  box-sizing: border-box;
+  margin-top 20px;
 `;
+
 
 export default function HomePage() {
   return (
     <div>
-        <Header />
-        <Container>
-          <LeftHomePage/>
-          <Branie/>
-        </Container>
-        <Footer />
+      <Header />
+      <Container>
+        <LeftHomePage/>
+        <Branie/>
+      </Container>
+      <Footer />
     </div>
   );
 }

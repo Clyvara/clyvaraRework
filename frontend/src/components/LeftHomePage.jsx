@@ -3,19 +3,20 @@ import { Link } from "react-router-dom";
 
 const Container = styled.div`
   width: 100%;
-  height: 100vh;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  flex-direction: column;
   gap: 2rem;
   font-family: "Rethink Sans";
+
+// manually pushes logo + text towards center of page
+  transform: translateX(60px);
 `;
 
 const Box = styled.div`
-  width: 48%;
-  height: 300px;
-  flex-shrink: 0;
+  width: 60%;
+  height: 500px;
   background: #e9ebf3;
   border-radius: 48px;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
@@ -23,14 +24,16 @@ const Box = styled.div`
 
 const ButtonRow = styled.div`
   display: flex;
+  justify-content: center;
   gap: 1rem;
 `;
+
 
 const Button = styled(Link)`
   padding: 0.7rem 2rem;
   border: 2px solid #111827;
   border-radius: 999px;
-  background: white;
+  background: #fff;
   color: #111827;
   font-weight: 600;
   text-decoration: none;
@@ -41,6 +44,7 @@ const Button = styled(Link)`
     color: #fff;
   }
 `;
+
 
 export default function LeftHomePage() {
   return (
