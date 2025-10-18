@@ -17,7 +17,7 @@ const Container = styled.div`
 const Box = styled.div`
   width: 60%;
   height: 500px;
-  background: #e9ebf3;
+  background: lightgray;
   border-radius: 48px;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
 `;
@@ -32,12 +32,13 @@ const ButtonRow = styled.div`
 const Button = styled(Link)`
   padding: 0.7rem 2rem;
   border: 2px solid #111827;
-  border-radius: 999px;
+  border-radius: 40px;
   background: #fff;
   color: #111827;
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease-in-out;
+  font-family: "General Sans";
 
   &:hover {
     background: #111827;

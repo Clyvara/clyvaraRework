@@ -7,6 +7,7 @@ import ChatBot from "../components/ChatBot.jsx";
 import Footer from "../components/Footer.jsx";
 import Branie from "../components/Branie.jsx";
 import LeftHomePage from "../components/LeftHomePage.jsx";
+import Testimonials from "../components/Testimonials.jsx";
 
 const Container = styled.main`
   display: grid;
@@ -31,6 +32,7 @@ export default function HomePage() {
         <LeftHomePage/>
         <Branie/>
       </Container>
+      <Testimonials/>
       <Footer />
     </div>
   );
