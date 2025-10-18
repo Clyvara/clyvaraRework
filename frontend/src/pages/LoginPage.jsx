@@ -9,7 +9,7 @@ const Page = styled.div`
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #6cb7bb;
+  background: #ADCAF0;
   padding: 2rem 1rem;
 `;
 
@@ -54,10 +54,15 @@ const Input = styled.input`
   border-radius: 10px;
   background: #fff;
   font-size: 1rem;
+
+  color: #111827;
+  &::placeholder { color: #9ca3af; }
+
   &:focus {
     outline: none;
     border-color: #111827;
     box-shadow: 0 0 0 3px rgba(17,24,39,0.12);
+    color: #111827;
   }
 `;
 
@@ -184,11 +189,12 @@ export default function Login() {
             </PasswordRow>
           </Field>
 
-          <GoogleSignInButton />
-
           <Button type="submit" disabled={loading}>
             {loading ? "Signing in…" : "Log In"}
           </Button>
+
+          <GoogleSignInButton />
+          
         </Form>
 
         {msg && <Message $error={isError}>{msg}</Message>}
