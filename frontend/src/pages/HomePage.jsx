@@ -5,38 +5,35 @@ import styled from "styled-components";
 import Header from "../components/Header.jsx";
 import ChatBot from "../components/ChatBot.jsx";
 import Footer from "../components/Footer.jsx";
+import Branie from "../components/Branie.jsx";
+import LeftHomePage from "../components/LeftHomePage.jsx";
+import Testimonials from "../components/Testimonials.jsx";
 
-const Container = styled.div`
-  display: flex;
-  flex-direction: column;
+const Container = styled.main`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
+  justify-content: space-between;
+  gap: 3rem;
   width: 100%;
-  gap: 1.5rem;
-  min-height: 100dvh;
+  min-height: calc(100vh - 196px);
   background: #ADCAF0;
+  padding: 48px 58px;
+  box-sizing: border-box;
+  margin-top 20px;
 `;
 
-const Body = styled.div`
-  width: 100%;
-  max-width: 1200px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 1rem;
-  padding-bottom: 5rem;
-`;
 
 export default function HomePage() {
   return (
     <div>
-        <Header />
-        <Container>
-            <Body>
-            { /* <ChatBot /> */}
-            </Body>
-        </Container>
-        <Footer />
+      <Header />
+      <Container>
+        <LeftHomePage/>
+        <Branie/>
+      </Container>
+      <Testimonials/>
+      <Footer />
     </div>
   );
 }

@@ -12,7 +12,7 @@ const Container = styled.div`
   background: #ADCAF0;
 `;
 
-export default function TestingPage() {
+export default function PricingPage() {
   return (
     <div>
       <Header/>
