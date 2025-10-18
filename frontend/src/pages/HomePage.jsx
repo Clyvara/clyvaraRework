@@ -5,7 +5,7 @@ import styled from "styled-components";
 import Header from "../components/Header.jsx";
 import ChatBot from "../components/ChatBot.jsx";
 import Footer from "../components/Footer.jsx";
-import Branie from "../components/Branie.jsx";
+import Branie from "../components/Brainie.jsx";
 import LeftHomePage from "../components/LeftHomePage.jsx";
 import Testimonials from "../components/Testimonials.jsx";
 

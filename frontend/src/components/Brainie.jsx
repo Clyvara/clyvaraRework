@@ -36,7 +36,7 @@ const Image = styled.img`
 
 
 
-export default function Branie() {
+export default function Brainie() {
   return (
     <Container>
       <Title>

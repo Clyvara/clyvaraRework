@@ -5,6 +5,7 @@ import TestingPage from "./pages/TestingPage.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PricingPage from "./pages/PricingPage.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/dashboard/*" element={<Dashboard />} />
     </Routes>
   );
 }
