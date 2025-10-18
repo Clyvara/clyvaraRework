@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import Header from "../components/Header";
+import Footer from "../components/Footer";
 
 const Container = styled.div`
   display: flex;
@@ -13,9 +14,13 @@ const Container = styled.div`
 
 export default function TestingPage() {
   return (
-    <Container>
-      <Header />
-      <h1>still working on pricing page</h1>
-    </Container>
+    <div>
+      <Header/>
+      <Container>
+        <h1>still working on pricing page</h1>
+      </Container>
+      <Footer/>
+    </div>
+    
   );
 }
