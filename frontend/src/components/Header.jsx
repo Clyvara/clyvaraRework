@@ -2,9 +2,10 @@ import clyvaranewlogo from "../assets/clyvaranewlogo.svg";
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 
+
 const Container = styled.div`
   width: 100%;
-  height: 196px;
+  height: 64px;
   background: #20359A;
   color: #E7A0CC;
 
@@ -25,12 +26,12 @@ const LeftGroup = styled(Link)`
 
 const Logo = styled.img`
   height: 80%;
-  max-height: 100px;
+  max-height: 50px;
   object-fit: contain;
 `;
 
 const Title = styled.h1`
-  font-size: 72px;
+  font-size: 30px;
   font-weight: 700;
   margin: 0;
   color: #E7A0CC;
@@ -46,7 +47,7 @@ const NavLinks = styled.div`
 const NavLink = styled(Link)`
   color: #E7A0CC;
   font-weight: 700;
-  font-size: 50px;
+  font-size: 20px;
   font-family: 'Rethink Sans';
   text-decoration: none;
 
