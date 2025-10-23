@@ -146,8 +146,8 @@ export default function Login() {
       setMsg(error.message || "Unable to log in. Please check your credentials.");
       return;
     }
-    // Success → back to homepage
-    nav("/", { replace: true });
+    // Success → redirect to dashboard
+    nav("/dashboard", { replace: true });
   }
 
   return (
