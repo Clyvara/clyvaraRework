@@ -1,0 +1,10 @@
+# Copy this to .env and fill in your actual values
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# AWS RDS PostgreSQL Database
+DATABASE_URL=postgresql+psycopg://username:password@your-aws-rds-endpoint:5432/your-database-name
+
+# Supabase JWT Secret (get from Supabase dashboard)
+SUPABASE_JWT_SECRET=your_supabase_jwt_secret_here

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import styled from "styled-components";
 import { buildDomManifest, summarizePageContext } from "../utils/pageContext.js";
+import { supabase } from "../utils/supabaseClient.js";
 
 const ChatWrap = styled.div`
   display: grid;
@@ -144,9 +145,18 @@ export default function Chat() {
     setLoading(true);
 
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated");
+      }
+
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           message: text,
           thread_id: threadId,
@@ -154,7 +164,10 @@ export default function Chat() {
         }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || `HTTP ${res.status}`);
+      }
       const data = await res.json();
 
       setThreadId(data.thread_id);
@@ -164,8 +177,7 @@ export default function Chat() {
         ...m,
         {
           role: "assistant",
-          text:
-            "Error.",
+          text: `Error: ${err.message}`,
         },
       ]);
     } finally {
