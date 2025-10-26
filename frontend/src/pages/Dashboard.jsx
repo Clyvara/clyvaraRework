@@ -27,7 +27,7 @@ const Logo = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 500;
+  font-weight: 700;
   font-family: 'Rethink Sans';
   font-size: 30px;
   white-space: nowrap;
@@ -61,7 +61,8 @@ const NavItem = styled.button`
   gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  font-weight: 600;
+  font-weight: 400;
+  font-family: 'General Sans';
   cursor: pointer;
   background: ${(p) => (p.$active ? "rgba(255,255,255,.2)" : "transparent")};
   white-space: nowrap;
@@ -76,8 +77,8 @@ const NavItem = styled.button`
 `;
 
 const NavIcon = styled.img`
-  width: 18px;
-  height: 18px;
+  height: 80%;
+  max-height: 50px;
   object-fit: contain;
   flex-shrink: 0;
 `;
@@ -86,6 +87,8 @@ const NavText = styled.span`
   opacity: ${p => p.$collapsed ? 0 : 1};
   visibility: ${p => p.$collapsed ? 'hidden' : 'visible'};
   transition: all 0.3s ease;
+  font-family: 'General Sans';
+  font-weight: 400;
 `;
 
 const ToggleButton = styled.button`
@@ -95,7 +98,8 @@ const ToggleButton = styled.button`
   gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  font-weight: 600;
+  font-weight: 400;
+  font-family: 'General Sans';
   cursor: pointer;
   background: transparent;
   white-space: nowrap;
@@ -120,6 +124,8 @@ const ToggleText = styled.span`
   opacity: ${p => p.$collapsed ? 0 : 1};
   visibility: ${p => p.$collapsed ? 'hidden' : 'visible'};
   transition: all 0.3s ease;
+  font-family: 'General Sans';
+  font-weight: 400;
 `;
 
 /* ---------- Main Content ---------- */
@@ -206,7 +212,7 @@ const ClassHeader = styled.div`
 
 const ClassTitle = styled.h3`
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
   color: #333;
   font-family: 'Rethink Sans';
@@ -218,14 +224,17 @@ const ClassBadge = styled.div`
   padding: 4px 8px;
   border-radius: 12px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
+  font-family: 'General Sans';
 `;
 
 const ClassDescription = styled.p`
   color: #666;
   font-size: 14px;
+  font-family: 'General Sans';
   line-height: 1.5;
   margin: 0 0 12px 0;
+  font-weight: 400;
 `;
 
 const StartButton = styled.button`
@@ -234,8 +243,10 @@ const StartButton = styled.button`
   color: white;
   padding: 8px 16px;
   border-radius: 6px;
-  font-weight: 600;
+  font-weight: 500;
+  font-family: 'General Sans';
   font-size: 14px;
+  fomt-family: 'General Sans';
   cursor: pointer;
   transition: background 0.2s ease;
   margin-right: 8px;
@@ -254,7 +265,8 @@ const DeleteButton = styled.button`
   color: #666;
   padding: 8px 16px;
   border-radius: 6px;
-  font-weight: 600;
+  font-weight: 500;
+  font-family: 'General Sans';
   font-size: 14px;
   cursor: pointer;
   transition: background 0.2s ease;
@@ -306,6 +318,8 @@ const ParsedContent = styled.div`
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
+  font-family: 'General Sans';
+  font-weight: 400;
 `;
 
 const ModalButtons = styled.div`
@@ -313,6 +327,8 @@ const ModalButtons = styled.div`
   gap: 12px;
   justify-content: flex-end;
   margin-top: 20px;
+  font-family: 'General Sans';
+  font-weight: 500;
 `;
 
 /* ---------- Empty State ---------- */

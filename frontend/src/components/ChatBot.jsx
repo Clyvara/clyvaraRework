@@ -61,7 +61,8 @@ const ChatHeader = styled.div`
 const ChatTitle = styled.h3`
   margin: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
+  font-family: "Rethink Sans";
 `;
 
 const CloseButton = styled.button`
@@ -92,6 +93,8 @@ const MessageBubble = styled.div`
   border-radius: 18px;
   word-wrap: break-word;
   font-size: 14px;
+  font-family: 'General Sans';
+  font-weight: 400;
   line-height: 1.4;
   
   ${p => p.$isUser ? `
