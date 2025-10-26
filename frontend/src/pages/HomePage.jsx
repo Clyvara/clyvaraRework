@@ -12,8 +12,9 @@ import Testimonials from "../components/Testimonials.jsx";
 
 const Container = styled.main`
   display: grid;
+  max-width: 1440px;
   grid-template-columns: 1fr 1fr;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 3rem;
   width: 100%;

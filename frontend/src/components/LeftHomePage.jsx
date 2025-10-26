@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 const Container = styled.div`
   width: 100%;
+  height: 400px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -15,27 +16,26 @@ const Container = styled.div`
 `;
 
 const Box = styled.div`
-  width: 60%;
-  height: 500px;
+  width: 100%;
+  height: 400px;
   background: lightgray;
-  border-radius: 48px;
+  border-radius: 18px;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
 `;
 
 const ButtonRow = styled.div`
   display: flex;
   justify-content: center;
-  gap: 1rem;
+  gap: 2rem;
 `;
 
 
 const Button = styled(Link)`
   padding: 0.7rem 2rem;
-  border: 2px solid #111827;
+  border: 1px solid #111827;
   border-radius: 40px;
   background: #fff;
   color: #111827;
-  font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease-in-out;
   font-family: "General Sans";
