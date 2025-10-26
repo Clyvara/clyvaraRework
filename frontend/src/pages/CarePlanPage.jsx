@@ -8,20 +8,10 @@ const Title = styled.h1`
   color: black;
 `;
 
-const Description = styled.p`
-  font-size: 16px;
-  color: #555;
-  line-height: 1.6;
-  max-width: 600px;
-`;
-
 export default function CarePlanPage() {
   return (
-    <>
+    <div>
       <Title>Care Plan</Title>
-      <Description>
-        This is the Care Plan view.
-      </Description>
-    </>
+    </div>
   );
 }

@@ -14,14 +14,12 @@ import LearningPlanPage from "./pages/LearningPlanPage.jsx";
 export default function App() {
   return (
     <Routes>
-      {/* public routes */}
       <Route path="/" element={<HomePage />} />
       <Route path="/testing" element={<TestingPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/pricing" element={<PricingPage />} />
 
-      {/* dashboard-style routes with sidebar */}
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/careplan" element={<CareplanPage />} />

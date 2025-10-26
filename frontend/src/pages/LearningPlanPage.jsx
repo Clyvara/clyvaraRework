@@ -17,11 +17,9 @@ const Description = styled.p`
 
 export default function CarePlanPage() {
   return (
-    <>
+    <div>
       <Title>Learning Plan</Title>
-      <Description>
-        This is the Learning Plan view.
-      </Description>
-    </>
+    </div>
+
   );
 }

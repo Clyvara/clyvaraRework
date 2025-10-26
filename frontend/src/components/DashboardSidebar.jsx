@@ -3,8 +3,6 @@ import styled from "styled-components";
 import { useNavigate, useLocation } from "react-router-dom";
 import clyvaralogo from "../assets/clyvaranewlogo.svg";
 
-/* ---------- Sidebar Styles ---------- */
-
 const SidebarWrap = styled.aside`
   background: #20359A;
   color: white;
