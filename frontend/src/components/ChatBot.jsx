@@ -124,6 +124,8 @@ const ChatInput = styled.input`
   border: 1px solid #ddd;
   border-radius: 24px;
   font-size: 14px;
+  font-family: 'General Sans';
+  font-weight: 400;
   
   &:focus {
     outline: none;

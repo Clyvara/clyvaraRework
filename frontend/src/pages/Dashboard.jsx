@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import clyvaralogo from "../assets/clyvaranewlogo.svg";
 import ChatBot from "../components/ChatBot.jsx";
+import { Link } from "react-router-dom";
+
 
 /* ---------- Layout ---------- */
 const Shell = styled.div`
@@ -23,7 +25,7 @@ const Sidebar = styled.aside`
   transition: padding 0.3s ease;
 `;
 
-const Logo = styled.div`
+const Logo = styled(Link)`
   display: flex;
   align-items: center;
   gap: 10px;
@@ -32,6 +34,10 @@ const Logo = styled.div`
   font-size: 30px;
   white-space: nowrap;
   color: #E7A0CC;
+  &:hover {
+    text-decoration: none;
+    color: #E7A0CC;
+  }
 `;
 
 const LogoImg = styled.img`
@@ -215,7 +221,8 @@ const ClassTitle = styled.h3`
   font-weight: 700;
   margin: 0;
   color: #333;
-  font-family: 'Rethink Sans';
+  font-family: 'General Sans';
+  font-weight: 400;
 `;
 
 const ClassBadge = styled.div`
@@ -421,7 +428,7 @@ export default function Dashboard() {
       {/* Sidebar */}
       <Sidebar $collapsed={sidebarCollapsed}>
         <div>
-          <Logo>
+          <Logo to="/">
             <LogoImg src={clyvaralogo} alt="Clyvara logo" />
             <LogoText $collapsed={sidebarCollapsed}>Clyvara</LogoText>
           </Logo>
