@@ -8,30 +8,33 @@ const Container = styled.div`
   align-items: center;
   justify-content: center;
   text-align: center;
-  flex: 1;
-  gap: 1.5rem;
-
-//manually pushes logo + text towards center of page
-  transform: translateX(-60px);
+  gap: 2rem;
+  padding: 10px 0px; 
 `;
 
 const Title = styled.p`
   font-family: "Rethink Sans";
-  width: 50%;
-  font-size: 48px;
+  width: 70%;
+  font-size: 40px;
   color: #000;
   margin: 0;
-  font-weight: 400;
 
   span {
     font-style: italic;
     font-weight: 500;
+  }
+    @media (max-width: 768px) {
+    font-size: 24px;
+    width: 90%;
   }
 `;
 
 const Image = styled.img`
   width: 30%;
   height: auto;
+  @media (max-width: 768px) {
+    width: 50%;
+  }
 `;
 
 

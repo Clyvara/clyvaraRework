@@ -18,7 +18,7 @@ const Container = styled.main`
   justify-content: space-between;
   gap: 3rem;
   width: 100%;
-  min-height: calc(100vh - 196px);
+  min-height: calc(100vh + 100px);
   background: var(--central-park-sky);
   padding: 48px 58px;
   box-sizing: border-box;

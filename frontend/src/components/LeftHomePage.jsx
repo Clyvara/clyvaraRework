@@ -10,14 +10,11 @@ const Container = styled.div`
   align-items: center;
   gap: 2rem;
   font-family: "Rethink Sans";
-
-// manually pushes logo + text towards center of page
-  transform: translateX(60px);
 `;
 
 const Box = styled.div`
   width: 100%;
-  height: 400px;
+  height: 500px;
   background: lightgray;
   border-radius: 18px;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
