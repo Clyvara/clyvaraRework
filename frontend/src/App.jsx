@@ -8,7 +8,7 @@ import PricingPage from "./pages/PricingPage.jsx";
 
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-import CareplanPage from "./pages/CarePlanPage.jsx";
+import CarePlanPage from "./pages/CarePlanPage.jsx";
 import LearningPlanPage from "./pages/LearningPlanPage.jsx";
 
 export default function App() {
@@ -22,7 +22,7 @@ export default function App() {
 
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/careplan" element={<CareplanPage />} />
+        <Route path="/careplan" element={<CarePlanPage />} />
         <Route path="/learningplan" element={<LearningPlanPage />} />
       </Route>
     </Routes>

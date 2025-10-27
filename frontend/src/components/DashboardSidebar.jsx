@@ -23,6 +23,12 @@ const Logo = styled.div`
   font-size: 30px;
   white-space: nowrap;
   color: #E7A0CC;
+  cursor: pointer; /* 👈 added */
+  user-select: none;
+
+  &:hover {
+    opacity: 0.9;
+  }
 `;
 
 const LogoImg = styled.img`
@@ -113,8 +119,6 @@ const ToggleText = styled.span`
   transition: all 0.3s ease;
 `;
 
-/* ---------- Component ---------- */
-
 export default function DashboardSidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -129,13 +133,13 @@ export default function DashboardSidebar({ collapsed, onToggle }) {
   return (
     <SidebarWrap $collapsed={collapsed}>
       <div>
-        {/* Logo */}
-        <Logo>
+        {/* Logo → now clickable */}
+        <Logo onClick={() => navigate("/dashboard")}>
           <LogoImg src={clyvaralogo} alt="Clyvara logo" />
           <LogoText $collapsed={collapsed}>Clyvara</LogoText>
         </Logo>
 
-        {/* Nav */}
+        {/* Nav items */}
         {!collapsed && (
           <Nav>
             {navItems.map(({ label, icon, path }) => (
@@ -155,11 +159,7 @@ export default function DashboardSidebar({ collapsed, onToggle }) {
           </Nav>
         )}
 
-        {/* Collapse / Expand */}
-        <ToggleButton
-          onClick={onToggle}
-          $collapsed={collapsed}
-        >
+        <ToggleButton onClick={onToggle} $collapsed={collapsed}>
           <ToggleIcon viewBox="0 0 16 16">
             {collapsed ? (
               <>
