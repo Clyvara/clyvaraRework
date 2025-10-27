@@ -24,6 +24,9 @@ const ButtonRow = styled.div`
   display: flex;
   justify-content: center;
   gap: 2rem;
+  font-size: 20px;
+  font-weight: 500;
+  fomt-family: "General Sans";
 `;
 
 
