@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
+import ChatBot from "../components/ChatBot.jsx";
 
 const Header = styled.header`
   display: flex;
@@ -331,6 +332,9 @@ export default function Dashboard() {
           </ModalButtons>
         </ModalContent>
       </ModalOverlay>
+      
+      {/* ChatBot Component */}
+      <ChatBot />
       </>
   );
 }

@@ -10,13 +10,20 @@ load_dotenv()
 
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+psycopg://postgres:password@localhost:5432/postgres")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    "DATABASE_URL", "postgresql+psycopg://username:password@your-aws-rds-endpoint:5432/your-database-name")
+
+# Lazy engine creation to avoid import-time database connection
+def get_engine():
+    return create_engine(DATABASE_URL)
+
+def get_session_local():
+    return sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+
 Base = declarative_base()
 
 # Dependency for database sessions
 def get_db():
+    SessionLocal = get_session_local()
     db = SessionLocal()
     try:
         yield db
@@ -131,6 +138,7 @@ class AnalyticsData(Base):
 # Test database connection
 def test_connection():
     try:
+        engine = get_engine()
         with engine.connect() as connection:
             from sqlalchemy import text
             result = connection.execute(text("SELECT 1"))
@@ -143,6 +151,7 @@ def test_connection():
 def create_all_tables():
     """Create all tables in the database"""
     try:
+        engine = get_engine()
         Base.metadata.create_all(bind=engine)
         print("All tables created successfully!")
         return True
@@ -235,15 +244,28 @@ class Material(Base):
     __table_args__ = {'schema': 'main'}
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String, nullable=False)  # Changed to String for Supabase UUID
     course_id = Column(Integer)
     title = Column(String, nullable=False)
-    file_type = Column(String, nullable=False)  # pdf, pptx, docx
-    file_path = Column(String)  # for actual file storage
+    file_type = Column(String, nullable=False)  # pdf, pptx, docx, txt
+    file_path = Column(String)  # S3 URL or local path
+    file_size = Column(Integer)  # File size in bytes
+    
+    # RAG Processing Fields
     status = Column(String, nullable=False, default="uploaded")  # uploaded, processing, processed, failed
     processing_progress = Column(Integer, default=0)
+    processing_error = Column(Text)  # Error message if processing failed
+    
+    # RAG Content Fields
+    extracted_text = Column(Text)  # Full extracted text
+    chunk_count = Column(Integer, default=0)  # Number of chunks created
+    total_tokens = Column(Integer, default=0)  # Total tokens in document
+    embedding_model = Column(String, default="text-embedding-3-small")  # Model used for embeddings
+    
+    # Timestamps
     uploaded_at = Column(DateTime, server_default=func.now())
     processed_at = Column(DateTime)
+    last_accessed = Column(DateTime)
 
 class Topic(Base):
     __tablename__ = "topics"
@@ -357,7 +379,115 @@ class ContentGeneration(Base):
     requested_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime)
 
-# Anesthesia Care Plans
+# Comprehensive Care Plans with RAG Integration
+class CarePlan(Base):
+    __tablename__ = "care_plans"
+    __table_args__ = {'schema': 'main'}
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)  # Supabase UUID
+    
+    # Basic Information
+    title = Column(String(255), nullable=False)
+    patient_name = Column(String(255))
+    procedure = Column(String(500))
+    diagnosis = Column(String(500))
+    
+    # Patient Demographics
+    age = Column(String(50))
+    sex = Column(String(20))
+    height = Column(String(50))
+    weight = Column(String(50))
+    
+    # Vital Signs
+    temperature_f = Column(String(20))
+    blood_pressure = Column(String(50))
+    heart_rate = Column(String(20))
+    respiration_rate = Column(String(20))
+    oxygen_saturation = Column(String(20))
+    lmp_date = Column(String(50))
+    
+    # Medical History
+    past_medical_history = Column(Text)
+    past_surgical_history = Column(Text)
+    anesthesia_history = Column(Text)
+    current_medications = Column(Text)
+    alcohol_use = Column(Text)
+    substance_use = Column(Text)
+    allergies = Column(Text)
+    
+    # Physical Assessment
+    neurological_findings = Column(Text)
+    heent_findings = Column(Text)
+    respiratory_findings = Column(Text)
+    cardiovascular_findings = Column(Text)
+    gastrointestinal_findings = Column(Text)
+    genitourinary_findings = Column(Text)
+    endocrine_findings = Column(Text)
+    other_findings = Column(Text)
+    
+    # Airway Assessment
+    mallampati_class = Column(String(50))
+    ulbt_grade = Column(String(50))
+    thyromental_distance = Column(String(20))
+    interincisor_distance = Column(String(20))
+    dentition = Column(Text)
+    neck_assessment = Column(Text)
+    oral_mucosa = Column(Text)
+    
+    # Laboratory Values
+    sodium = Column(String(20))
+    potassium = Column(String(20))
+    chloride = Column(String(20))
+    co2 = Column(String(20))
+    bun = Column(String(20))
+    creatinine = Column(String(20))
+    glucose = Column(String(20))
+    wbc = Column(String(20))
+    hemoglobin = Column(String(20))
+    hematocrit = Column(String(20))
+    platelets = Column(String(20))
+    pt = Column(String(20))
+    ptt = Column(String(20))
+    inr = Column(String(20))
+    abg = Column(String(50))
+    other_labs = Column(Text)
+    
+    # Imaging/Diagnostic Tests
+    ekg = Column(Text)
+    chest_xray = Column(Text)
+    echocardiogram = Column(Text)
+    other_imaging = Column(Text)
+    
+    # Cultural/Religious Considerations
+    cultural_religious_attributes = Column(Text)
+    
+    # AI-Generated Content
+    ai_recommendations = Column(Text)  # AI-generated anesthesia plan
+    risk_assessment = Column(Text)     # AI-generated risk analysis
+    monitoring_plan = Column(Text)    # AI-generated monitoring recommendations
+    medication_plan = Column(Text)    # AI-generated medication recommendations
+    
+    # RAG Integration Fields
+    rag_context = Column(Text)        # Context used for AI generation
+    rag_sources = Column(JSON)        # Sources referenced during generation
+    rag_confidence_score = Column(DECIMAL)  # Confidence in AI recommendations
+    
+    # Status and Metadata
+    status = Column(String(50), default="draft")  # draft, completed, archived
+    version = Column(Integer, default=1)
+    is_template = Column(Boolean, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_accessed = Column(DateTime)
+    
+    # File Export
+    exported_text = Column(Text)      # Full text export for RAG indexing
+    export_hash = Column(String(64))  # Hash for change detection
+
+# Legacy Anesthesia Care Plans (keeping for backward compatibility)
 class AnesthesiaCarePlan(Base):
     __tablename__ = "anesthesia_care_plans"
     
@@ -656,12 +786,22 @@ class VectorIndexEntry(Base):
     __tablename__ = "vector_index_entries"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)  # For user-specific queries
     content_hash = Column(String(64), unique=True)
     embedding = Column(JSON, nullable=False)  # Store vector as JSON array
-    content = Column(String, nullable=False)
-    vector_metadata = Column(JSON, default=dict)
+    content = Column(Text, nullable=False)  # Changed to Text for longer content
+    token_count = Column(Integer, default=0)  # Number of tokens in this chunk
+    chunk_index = Column(Integer, default=0)  # Order of chunk in document
+    
+    # Source tracking
     source_type = Column(String(50), nullable=False)  # material, artifact, web, manual
-    source_id = Column(Integer)
+    source_id = Column(Integer)  # References Material.id or other source
+    
+    # Metadata
+    vector_metadata = Column(JSON, default=dict)
+    embedding_model = Column(String, default="text-embedding-3-small")
+    
+    # Usage tracking
     created_at = Column(DateTime, server_default=func.now())
     last_accessed = Column(DateTime)
     access_count = Column(Integer, default=0)
