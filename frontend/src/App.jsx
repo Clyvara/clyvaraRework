@@ -5,6 +5,7 @@ import TestingPage from "./pages/TestingPage.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PricingPage from "./pages/PricingPage.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -20,7 +21,11 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/pricing" element={<PricingPage />} />
 
-      <Route element={<DashboardLayout />}>
+      <Route element={
+        <ProtectedRoute>
+          <DashboardLayout />
+        </ProtectedRoute>
+      }>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/careplan" element={<CarePlanPage />} />
         <Route path="/learningplan" element={<LearningPlanPage />} />
