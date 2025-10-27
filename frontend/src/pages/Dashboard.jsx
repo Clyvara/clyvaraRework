@@ -331,8 +331,6 @@ export default function Dashboard() {
           </ModalButtons>
         </ModalContent>
       </ModalOverlay>
-
-      <ChatBot />
-    </Shell>
+      </>
   );
 }

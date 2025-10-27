@@ -5,7 +5,6 @@ import TestingPage from "./pages/TestingPage.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PricingPage from "./pages/PricingPage.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
 
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
