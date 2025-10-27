@@ -7,6 +7,11 @@ import LoginPage from "./pages/LoginPage.jsx";
 import PricingPage from "./pages/PricingPage.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 
+import DashboardLayout from "./layouts/DashboardLayout.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import CarePlanPage from "./pages/CarePlanPage.jsx";
+import LearningPlanPage from "./pages/LearningPlanPage.jsx";
+
 export default function App() {
   return (
     <Routes>
@@ -15,7 +20,12 @@ export default function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/pricing" element={<PricingPage />} />
-      <Route path="/dashboard/*" element={<Dashboard />} />
+
+      <Route element={<DashboardLayout />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/careplan" element={<CarePlanPage />} />
+        <Route path="/learningplan" element={<LearningPlanPage />} />
+      </Route>
     </Routes>
   );
 }
