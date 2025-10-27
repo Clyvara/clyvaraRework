@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import styled from "styled-components";
 import { downloadCarePlanTxt } from "../utils/exportCarePlan";
 import { buildFormState } from "../utils/buildFormState";
+import { supabase } from "../utils/supabaseClient";
 
 const PageWrapper = styled.div`
   display: flex;
@@ -339,8 +340,133 @@ const NextButton = styled.button`
   }
 `;
 
+const ActionBar = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
+const ActionButton = styled.button`
+  background: ${props => props.$variant === 'primary' ? '#4f46e5' : props.$variant === 'danger' ? '#dc2626' : '#e5e7eb'};
+  color: ${props => props.$variant === 'primary' ? 'white' : props.$variant === 'danger' ? 'white' : '#1f2937'};
+  font-size: 14px;
+  font-weight: 500;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &:hover {
+    background: ${props => props.$variant === 'primary' ? '#4338ca' : props.$variant === 'danger' ? '#b91c1c' : '#d1d5db'};
+  }
+
+  &:focus {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const CarePlanList = styled.div`
+  background: #ffffff;
+  border: 1px solid #dcdcdc;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+`;
+
+const CarePlanItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f3f4f6;
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const CarePlanInfo = styled.div`
+  flex: 1;
+`;
+
+const CarePlanTitle = styled.h3`
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: #0f172a;
+`;
+
+const CarePlanMeta = styled.p`
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+`;
+
+const CarePlanActions = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const AIRecommendations = styled.div`
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 24px;
+`;
+
+const AIRecommendationsTitle = styled.h3`
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: #0c4a6e;
+`;
+
+const AIRecommendationsContent = styled.div`
+  font-size: 14px;
+  line-height: 1.6;
+  color: #0c4a6e;
+  white-space: pre-wrap;
+`;
+
+const LoadingSpinner = styled.div`
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #4f46e5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 export default function CarePlanPage() {
   const [currentTab, setCurrentTab] = useState("info"); // "info" | "history" | "assessment" | "labs"
+  
+  // Database integration states
+  const [carePlans, setCarePlans] = useState([]);
+  const [currentCarePlanId, setCurrentCarePlanId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showCarePlanList, setShowCarePlanList] = useState(false);
+  const [aiRecommendations, setAiRecommendations] = useState(null);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   /* TAB 1: Patient Info */
   const [age, setAge] = useState("please-select");
@@ -436,6 +562,313 @@ export default function CarePlanPage() {
 
   const mallampatiOptions = ["Mallampati I", "Mallampati II", "Mallampati III", "Mallampati IV"];
   const ulbtOptions = ["Grade I", "Grade II", "Grade III"];
+
+  // Database functions
+  const loadCarePlans = async () => {
+    try {
+      setIsLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("No active session");
+        return;
+      }
+
+      const response = await fetch("http://localhost:8000/api/care-plans", {
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCarePlans(data.care_plans || []);
+      } else {
+        console.error("Failed to load care plans");
+      }
+    } catch (error) {
+      console.error("Error loading care plans:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveCarePlan = async () => {
+    try {
+      setIsSaving(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("No active session");
+        return;
+      }
+
+      const formState = buildFormState({
+        age, sex, height, weight, diagnosis, tempF, bp, hr, rr,
+        pmh, psh, anesthesiaHx, meds, alcohol, substance,
+        neuro, heent, resp, cardio, gi, gu, endo, otherFindings,
+        mallampati, ulbt, thyromental, interincisor, dentition, neck, oralMucosa,
+        na, k, cl, co2, bun, cr, glu, wbc, hgb, hct, plt, pt, ptt, inr, abg, otherLabs,
+        ekg, cxr, echo, otherImaging
+      });
+
+      const carePlanData = {
+        title: `Care Plan - ${diagnosis || 'Untitled'}`,
+        patient_name: formState.patient_name || '',
+        procedure: formState.procedure || '',
+        diagnosis: diagnosis,
+        ...formState
+      };
+
+      const response = await fetch("http://localhost:8000/api/care-plans", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(carePlanData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentCarePlanId(data.care_plan_id);
+        await loadCarePlans(); // Refresh the list
+        alert("Care plan saved successfully!");
+      } else {
+        console.error("Failed to save care plan");
+        alert("Failed to save care plan");
+      }
+    } catch (error) {
+      console.error("Error saving care plan:", error);
+      alert("Error saving care plan");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadCarePlan = async (carePlanId) => {
+    try {
+      setIsLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("No active session");
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/care-plans/${carePlanId}`, {
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const carePlan = data.care_plan;
+        
+        // Populate form fields
+        setAge(carePlan.age || "please-select");
+        setSex(carePlan.sex || "please-select");
+        setHeight(carePlan.height || "please-select");
+        setWeight(carePlan.weight || "please-select");
+        setDiagnosis(carePlan.diagnosis || "");
+        setTempF(carePlan.tempF || "");
+        setBp(carePlan.bp || "");
+        setHr(carePlan.hr || "");
+        setRr(carePlan.rr || "");
+        
+        setPmh(carePlan.pmh || "");
+        setPsh(carePlan.psh || "");
+        setAnesthesiaHx(carePlan.anesthesiaHx || "");
+        setMeds(carePlan.meds || "");
+        setAlcohol(carePlan.alcohol || "");
+        setSubstance(carePlan.substance || "");
+        
+        setNeuro(carePlan.neuro || "");
+        setHeent(carePlan.heent || "");
+        setResp(carePlan.resp || "");
+        setCardio(carePlan.cardio || "");
+        setGi(carePlan.gi || "");
+        setGu(carePlan.gu || "");
+        setEndo(carePlan.endo || "");
+        setOtherFindings(carePlan.otherFindings || "");
+        
+        setMallampati(carePlan.mallampati || "please-select");
+        setUlbt(carePlan.ulbt || "please-select");
+        setThyromental(carePlan.thyromental || "");
+        setInterincisor(carePlan.interincisor || "");
+        setDentition(carePlan.dentition || "");
+        setNeck(carePlan.neck || "");
+        setOralMucosa(carePlan.oralMucosa || "");
+        
+        setNa(carePlan.na || "");
+        setK(carePlan.k || "");
+        setCl(carePlan.cl || "");
+        setCo2(carePlan.co2 || "");
+        setBun(carePlan.bun || "");
+        setCr(carePlan.cr || "");
+        setGlu(carePlan.glu || "");
+        setWbc(carePlan.wbc || "");
+        setHgb(carePlan.hgb || "");
+        setHct(carePlan.hct || "");
+        setPlt(carePlan.plt || "");
+        setPt(carePlan.pt || "");
+        setPtt(carePlan.ptt || "");
+        setInr(carePlan.inr || "");
+        setAbg(carePlan.abg || "");
+        setOtherLabs(carePlan.otherLabs || "");
+        
+        setEkg(carePlan.ekg || "");
+        setCxr(carePlan.cxr || "");
+        setEcho(carePlan.echo || "");
+        setOtherImaging(carePlan.otherImaging || "");
+        
+        setCurrentCarePlanId(carePlanId);
+        setAiRecommendations(carePlan.ai_recommendations);
+        setShowCarePlanList(false);
+        
+        alert("Care plan loaded successfully!");
+      } else {
+        console.error("Failed to load care plan");
+        alert("Failed to load care plan");
+      }
+    } catch (error) {
+      console.error("Error loading care plan:", error);
+      alert("Error loading care plan");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateAIRecommendations = async () => {
+    if (!currentCarePlanId) {
+      alert("Please save the care plan first before generating AI recommendations");
+      return;
+    }
+
+    try {
+      setIsGeneratingAI(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("No active session");
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/care-plans/${currentCarePlanId}/generate-ai`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAiRecommendations(data.recommendations.anesthesia_plan);
+        alert("AI recommendations generated successfully!");
+      } else {
+        console.error("Failed to generate AI recommendations");
+        alert("Failed to generate AI recommendations");
+      }
+    } catch (error) {
+      console.error("Error generating AI recommendations:", error);
+      alert("Error generating AI recommendations");
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const deleteCarePlan = async (carePlanId) => {
+    if (!confirm("Are you sure you want to delete this care plan?")) {
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error("No active session");
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/care-plans/${carePlanId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        await loadCarePlans(); // Refresh the list
+        if (currentCarePlanId === carePlanId) {
+          setCurrentCarePlanId(null);
+          setAiRecommendations(null);
+        }
+        alert("Care plan deleted successfully!");
+      } else {
+        console.error("Failed to delete care plan");
+        alert("Failed to delete care plan");
+      }
+    } catch (error) {
+      console.error("Error deleting care plan:", error);
+      alert("Error deleting care plan");
+    }
+  };
+
+  const clearForm = () => {
+    setAge("please-select");
+    setSex("please-select");
+    setHeight("please-select");
+    setWeight("please-select");
+    setDiagnosis("");
+    setTempF("");
+    setBp("");
+    setHr("");
+    setRr("");
+    setPmh("");
+    setPsh("");
+    setAnesthesiaHx("");
+    setMeds("");
+    setAlcohol("");
+    setSubstance("");
+    setNeuro("");
+    setHeent("");
+    setResp("");
+    setCardio("");
+    setGi("");
+    setGu("");
+    setEndo("");
+    setOtherFindings("");
+    setMallampati("please-select");
+    setUlbt("please-select");
+    setThyromental("");
+    setInterincisor("");
+    setDentition("");
+    setNeck("");
+    setOralMucosa("");
+    setNa("");
+    setK("");
+    setCl("");
+    setCo2("");
+    setBun("");
+    setCr("");
+    setGlu("");
+    setWbc("");
+    setHgb("");
+    setHct("");
+    setPlt("");
+    setPt("");
+    setPtt("");
+    setInr("");
+    setAbg("");
+    setOtherLabs("");
+    setEkg("");
+    setCxr("");
+    setEcho("");
+    setOtherImaging("");
+    setCurrentCarePlanId(null);
+    setAiRecommendations(null);
+  };
+
+  // Load care plans on component mount
+  useEffect(() => {
+    loadCarePlans();
+  }, []);
 
   const handleNext = () => {
     if (currentTab === "info") {
@@ -1057,17 +1490,19 @@ export default function CarePlanPage() {
       <FooterRow>
         <BackButton onClick={handleBack}>Back</BackButton>
 
-        <NextButton
-          onClick={() => {
-            // Option A: just download the .txt
-            downloadCarePlanTxt(formState);
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <NextButton
+            onClick={() => {
+              // Option A: just download the .txt
+              downloadCarePlanTxt(formState);
 
-            // Option B (optional): also log the string somewhere for debugging
-            // console.log(buildExportText(formState));
-          }}
-        >
-          Generate Care Plan
-        </NextButton>
+              // Option B (optional): also log the string somewhere for debugging
+              // console.log(buildExportText(formState));
+            }}
+          >
+            Generate Care Plan
+          </NextButton>
+        </div>
       </FooterRow>
     </>
   );
@@ -1139,6 +1574,84 @@ export default function CarePlanPage() {
           Generate comprehensive, evidence-based anesthesia care plans with AI assistance
         </Subtitle>
       </HeaderCard>
+
+      {/* Action Bar */}
+      <ActionBar>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <ActionButton onClick={() => setShowCarePlanList(!showCarePlanList)}>
+            {showCarePlanList ? 'Hide' : 'Show'} Care Plans ({carePlans.length})
+          </ActionButton>
+          <ActionButton onClick={clearForm}>
+            New Care Plan
+          </ActionButton>
+          <ActionButton onClick={saveCarePlan} disabled={isSaving}>
+            {isSaving ? <LoadingSpinner /> : null}
+            Save Care Plan
+          </ActionButton>
+          {currentCarePlanId && (
+            <ActionButton onClick={generateAIRecommendations} disabled={isGeneratingAI}>
+              {isGeneratingAI ? <LoadingSpinner /> : null}
+              Generate AI Recommendations
+            </ActionButton>
+          )}
+        </div>
+        {currentCarePlanId && (
+          <div style={{ fontSize: '14px', color: '#64748b' }}>
+            Current Care Plan ID: {currentCarePlanId}
+          </div>
+        )}
+      </ActionBar>
+
+      {/* Care Plan List */}
+      {showCarePlanList && (
+        <CarePlanList>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '600' }}>
+            Saved Care Plans
+          </h3>
+          {isLoading ? (
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <LoadingSpinner />
+              <p style={{ margin: '8px 0 0 0', color: '#64748b' }}>Loading care plans...</p>
+            </div>
+          ) : carePlans.length === 0 ? (
+            <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
+              No saved care plans yet. Create your first care plan below!
+            </p>
+          ) : (
+            carePlans.map((carePlan) => (
+              <CarePlanItem key={carePlan.id}>
+                <CarePlanInfo>
+                  <CarePlanTitle>{carePlan.title}</CarePlanTitle>
+                  <CarePlanMeta>
+                    {carePlan.patient_name && `Patient: ${carePlan.patient_name} • `}
+                    {carePlan.diagnosis && `Diagnosis: ${carePlan.diagnosis} • `}
+                    Created: {new Date(carePlan.created_at).toLocaleDateString()}
+                  </CarePlanMeta>
+                </CarePlanInfo>
+                <CarePlanActions>
+                  <ActionButton onClick={() => loadCarePlan(carePlan.id)}>
+                    Load
+                  </ActionButton>
+                  <ActionButton 
+                    $variant="danger" 
+                    onClick={() => deleteCarePlan(carePlan.id)}
+                  >
+                    Delete
+                  </ActionButton>
+                </CarePlanActions>
+              </CarePlanItem>
+            ))
+          )}
+        </CarePlanList>
+      )}
+
+      {/* AI Recommendations */}
+      {aiRecommendations && (
+        <AIRecommendations>
+          <AIRecommendationsTitle>🤖 AI-Generated Recommendations</AIRecommendationsTitle>
+          <AIRecommendationsContent>{aiRecommendations}</AIRecommendationsContent>
+        </AIRecommendations>
+      )}
 
       <SectionCard>
         <SectionHeader>
