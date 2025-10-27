@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import styled from "styled-components";
 import { buildDomManifest, summarizePageContext } from "../utils/pageContext.js";
+import { supabase } from "../utils/supabaseClient.js";
 import brainie from "../assets/brainie.png";
 
 // New design styled components
@@ -207,9 +208,18 @@ export default function Chat() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/chat", {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated");
+      }
+
+      const res = await fetch("http://localhost:8000/chat-rag", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           message: text,
           thread_id: threadId,
