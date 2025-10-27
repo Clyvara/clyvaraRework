@@ -8,3 +8,9 @@ DATABASE_URL=postgresql+psycopg://username:password@your-aws-rds-endpoint:5432/y
 
 # Supabase JWT Secret (get from Supabase dashboard)
 SUPABASE_JWT_SECRET=your_supabase_jwt_secret_here
+
+# AWS S3 Configuration (Optional - for file storage)
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=us-east-2
+S3_BUCKET_NAME=clyvara-uploads

@@ -151,7 +151,7 @@ export default function Chat() {
         throw new Error("Not authenticated");
       }
 
-      const res = await fetch("http://localhost:8000/chat", {
+      const res = await fetch("http://localhost:8000/chat-rag", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from uuid import uuid4
 import random
 import json
+import boto3
+import PyPDF2
+import io
+from docx import Document
 
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -13,7 +17,8 @@ import jwt
 from fastapi import Header
 
 from sqlalchemy.orm import Session
-from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession
+from sqlalchemy import func
+from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry
 
 load_dotenv()
 
@@ -48,6 +53,23 @@ if openai_api_key and openai_api_key != "your_openai_api_key_here":
     client = OpenAI(api_key=openai_api_key)
 else:
     client = None
+
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "clyvara-uploads")
+
+# Initialize S3 client
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_REGION
+    )
+else:
+    s3_client = None
         
 app = FastAPI()
 
@@ -58,6 +80,65 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# File processing functions
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """Extract text from PDF file"""
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error extracting PDF text: {str(e)}")
+
+def extract_text_from_docx(file_content: bytes) -> str:
+    """Extract text from DOCX file"""
+    try:
+        doc = Document(io.BytesIO(file_content))
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        return text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error extracting DOCX text: {str(e)}")
+
+def extract_text_from_file(file_content: bytes, file_type: str) -> str:
+    """Extract text based on file type"""
+    if file_type.lower() == "pdf":
+        return extract_text_from_pdf(file_content)
+    elif file_type.lower() in ["docx", "doc"]:
+        return extract_text_from_docx(file_content)
+    elif file_type.lower() == "txt":
+        return file_content.decode('utf-8')
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+
+def generate_embeddings(text: str) -> List[float]:
+    """Generate embeddings for text using OpenAI"""
+    if not client:
+        raise HTTPException(status_code=503, detail="OpenAI client not configured")
+    
+    try:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
+
+def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
+    """Split text into overlapping chunks for better retrieval"""
+    words = text.split()
+    chunks = []
+    
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = " ".join(words[i:i + chunk_size])
+        chunks.append(chunk)
+    
+    return chunks
 
 @app.get("/")
 def root():
@@ -585,6 +666,369 @@ def chat_test(payload: ChatIn, db: Session = Depends(get_db)):
         
         # For now, just return the response without storing in database
         # to avoid foreign key constraint issues
+        
+        return ChatOut(reply=reply, thread_id=thread_id)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+# File Upload Endpoints
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload and process a file (PDF, DOCX, TXT) for RAG"""
+    
+    # Validate file type
+    allowed_types = ["pdf", "docx", "doc", "txt"]
+    file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ""
+    
+    if file_extension not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_types)}"
+        )
+    
+    # Read file content
+    try:
+        file_content = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+    
+    # Generate unique file path
+    file_id = str(uuid4())
+    s3_key = f"uploads/{current_user['user_id']}/{file_id}_{file.filename}"
+    
+    # Upload to S3 (if configured)
+    s3_url = None
+    if s3_client:
+        try:
+            s3_client.put_object(
+                Bucket=S3_BUCKET_NAME,
+                Key=s3_key,
+                Body=file_content,
+                ContentType=file.content_type or "application/octet-stream"
+            )
+            s3_url = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+        except Exception as e:
+            print(f"S3 upload failed: {e}")
+            # Continue without S3 storage for now
+    
+    # Extract text from file
+    try:
+        extracted_text = extract_text_from_file(file_content, file_extension)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
+    
+    # Create material record in database
+    material = Material(
+        user_id=current_user['user_id'],
+        title=file.filename,
+        file_type=file_extension,
+        file_path=s3_url,
+        file_size=len(file_content),
+        status="processing",
+        processing_progress=0
+    )
+    
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+    
+    # Process text for RAG (chunk and create embeddings)
+    try:
+        chunks = chunk_text(extracted_text)
+        
+        # Create vector index entries for each chunk
+        for i, chunk in enumerate(chunks):
+            try:
+                embedding = generate_embeddings(chunk)
+                
+                vector_entry = VectorIndexEntry(
+                    user_id=current_user['user_id'],
+                    content_hash=f"{file_id}_{i}",
+                    embedding=embedding,
+                    content=chunk,
+                    token_count=len(chunk.split()),  # Approximate token count
+                    chunk_index=i,
+                    source_type="material",
+                    source_id=material.id,
+                    embedding_model="text-embedding-3-small",
+                    vector_metadata={
+                        "file_name": file.filename,
+                        "chunk_index": i,
+                        "total_chunks": len(chunks),
+                        "file_type": file_extension,
+                        "file_size": len(file_content)
+                    }
+                )
+                
+                db.add(vector_entry)
+                
+            except Exception as e:
+                print(f"Error creating embedding for chunk {i}: {e}")
+                continue
+        
+        db.commit()
+        
+        # Update material status
+        material.status = "processed"
+        material.processing_progress = 100
+        material.chunk_count = len(chunks)
+        material.total_tokens = sum(len(chunk.split()) for chunk in chunks)
+        material.extracted_text = extracted_text
+        material.processed_at = func.now()
+        db.commit()
+        
+        return {
+            "success": True,
+            "material_id": material.id,
+            "file_name": file.filename,
+            "file_type": file_extension,
+            "chunks_created": len(chunks),
+            "text_length": len(extracted_text),
+            "s3_url": s3_url,
+            "message": f"File processed successfully. Created {len(chunks)} chunks for RAG."
+        }
+        
+    except Exception as e:
+        # Update material status to failed
+        material.status = "failed"
+        material.processing_error = str(e)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Error processing file for RAG: {str(e)}")
+
+@app.get("/api/materials")
+def get_user_materials(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all materials uploaded by the current user"""
+    
+    materials = db.query(Material).filter(
+        Material.user_id == current_user['user_id']
+    ).order_by(Material.uploaded_at.desc()).all()
+    
+    return {
+        "materials": [
+            {
+                "id": material.id,
+                "title": material.title,
+                "file_type": material.file_type,
+                "status": material.status,
+                "processing_progress": material.processing_progress,
+                "uploaded_at": material.uploaded_at.isoformat(),
+                "processed_at": material.processed_at.isoformat() if material.processed_at else None
+            }
+            for material in materials
+        ]
+    }
+
+@app.delete("/api/materials/{material_id}")
+def delete_material(
+    material_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a material and its associated vector entries"""
+    
+    # Find the material
+    material = db.query(Material).filter(
+        Material.id == material_id,
+        Material.user_id == current_user['user_id']
+    ).first()
+    
+    if not material:
+        raise HTTPException(status_code=404, detail="Material not found")
+    
+    # Delete associated vector entries
+    vector_entries = db.query(VectorIndexEntry).filter(
+        VectorIndexEntry.source_id == material_id,
+        VectorIndexEntry.source_type == "material"
+    ).all()
+    
+    for entry in vector_entries:
+        db.delete(entry)
+    
+    # Delete the material
+    db.delete(material)
+    db.commit()
+    
+    return {"success": True, "message": "Material deleted successfully"}
+
+@app.get("/api/search")
+def search_materials(
+    query: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 5
+):
+    """Search through user's materials using vector similarity"""
+    
+    if not client:
+        raise HTTPException(status_code=503, detail="OpenAI client not configured")
+    
+    try:
+        # Generate embedding for the query
+        query_embedding = generate_embeddings(query)
+        
+        # Get user's materials
+        user_materials = db.query(Material).filter(
+            Material.user_id == current_user['user_id'],
+            Material.status == "processed"
+        ).all()
+        
+        material_ids = [m.id for m in user_materials]
+        
+        if not material_ids:
+            return {"results": [], "message": "No processed materials found"}
+        
+        # Get vector entries for user's materials
+        vector_entries = db.query(VectorIndexEntry).filter(
+            VectorIndexEntry.source_id.in_(material_ids),
+            VectorIndexEntry.source_type == "material"
+        ).all()
+        
+        # Calculate similarity scores (simplified cosine similarity)
+        results = []
+        for entry in vector_entries:
+            # Simple dot product for similarity (in production, use proper cosine similarity)
+            similarity = sum(a * b for a, b in zip(query_embedding, entry.embedding))
+            results.append({
+                "content": entry.content,
+                "similarity": similarity,
+                "metadata": entry.vector_metadata,
+                "source_id": entry.source_id
+            })
+        
+        # Sort by similarity and return top results
+        results.sort(key=lambda x: x["similarity"], reverse=True)
+        
+        return {
+            "results": results[:limit],
+            "query": query,
+            "total_found": len(results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+@app.post("/chat-rag", response_model=ChatOut)
+def chat_with_rag(payload: ChatIn, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Enhanced chat endpoint with RAG integration - searches user's materials for relevant context"""
+    if not client:
+        raise HTTPException(status_code=503, detail="OpenAI client not configured")
+    
+    # Create or reuse a thread
+    thread_id = payload.thread_id or str(uuid4())
+    
+    # RAG: Search user's materials for relevant context
+    relevant_context = ""
+    try:
+        # Generate embedding for the user's question
+        query_embedding = generate_embeddings(payload.message)
+        
+        # Get user's processed materials
+        user_materials = db.query(Material).filter(
+            Material.user_id == current_user['user_id'],
+            Material.status == "processed"
+        ).all()
+        
+        if user_materials:
+            material_ids = [m.id for m in user_materials]
+            
+            # Get vector entries for user's materials
+            vector_entries = db.query(VectorIndexEntry).filter(
+                VectorIndexEntry.source_id.in_(material_ids),
+                VectorIndexEntry.source_type == "material",
+                VectorIndexEntry.user_id == current_user['user_id']
+            ).all()
+            
+            # Calculate similarity scores and get top results
+            results = []
+            for entry in vector_entries:
+                similarity = sum(a * b for a, b in zip(query_embedding, entry.embedding))
+                results.append({
+                    "content": entry.content,
+                    "similarity": similarity,
+                    "metadata": entry.vector_metadata
+                })
+            
+            # Sort by similarity and get top 3 most relevant chunks
+            results.sort(key=lambda x: x["similarity"], reverse=True)
+            top_results = results[:3]
+            
+            if top_results:
+                relevant_context = "\n\nRelevant information from your uploaded materials:\n"
+                for i, result in enumerate(top_results, 1):
+                    file_name = result["metadata"].get("file_name", "Unknown")
+                    relevant_context += f"\n{i}. From {file_name}:\n{result['content'][:500]}...\n"
+                
+                # Update access tracking
+                for entry in vector_entries:
+                    if any(entry.content == result["content"] for result in top_results):
+                        entry.last_accessed = func.now()
+                        entry.access_count += 1
+                db.commit()
+    
+    except Exception as e:
+        print(f"RAG search error: {e}")
+        # Continue without RAG context if search fails
+    
+    # Build messages with RAG context
+    system_prompt = f"""You are a helpful AI assistant for Clyvara, a medical education platform. You can answer questions about medical topics, general knowledge, current events, and provide practical information.
+
+{relevant_context}
+
+When referencing information from uploaded materials, mention the source file name. Be helpful and informative in your responses."""
+    
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    
+    messages.append({"role": "user", "content": payload.message})
+    
+    try:
+        # Use the correct OpenAI model
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=500
+        )
+        
+        reply = response.choices[0].message.content
+        
+        # Store the chat message in database
+        try:
+            # First create a user session if it doesn't exist
+            existing_session = db.query(UserSession).filter(UserSession.session_id == thread_id).first()
+            if not existing_session:
+                user_session = UserSession(
+                    session_id=thread_id,
+                    user_id=current_user['user_id'],
+                    is_active=True
+                )
+                db.add(user_session)
+                db.commit()
+            
+            # Store the chat message
+            chat_message = ChatMessage(
+                session_id=thread_id,
+                message_type="user",
+                message_content={"message": payload.message},
+                user_id=current_user['user_id'],
+                response_time_ms=100,  # Placeholder
+                message_length=len(payload.message)
+            )
+            
+            db.add(chat_message)
+            db.commit()
+            
+        except Exception as db_error:
+            # Log the error but don't fail the chat
+            print(f"Database storage error: {db_error}")
         
         return ChatOut(reply=reply, thread_id=thread_id)
         

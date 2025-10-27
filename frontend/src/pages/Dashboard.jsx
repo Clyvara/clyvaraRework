@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import clyvaralogo from "../assets/clyvaranewlogo.svg";
 import ChatBot from "../components/ChatBot.jsx";
+import { supabase } from "../utils/supabaseClient.js";
 
 /* ---------- Layout ---------- */
 const Shell = styled.div`
@@ -352,40 +353,117 @@ export default function Dashboard() {
 
   // Load classes from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("clyvara-classes");
-    if (saved) {
-      setClasses(JSON.parse(saved));
-    }
+    // Load materials from backend API instead of localStorage
+    loadMaterials();
   }, []);
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
-  // Simple file upload - just adds a new class
-  const handleFileUpload = (event) => {
+  // Real file upload to backend API
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const newClass = {
-      id: Date.now(),
-      title: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
-      description: `Uploaded ${new Date().toLocaleDateString()}. Ready to study.`,
-      progress: 0,
-      completed: false,
-      type: "uploaded",
-      file: file.name,
-      // Add some sample parsed content for testing
-      parsedContent: `This is sample parsed content from ${file.name}.\n\nIt would show the actual text extracted from your PDF, PPT, or DOCX file.\n\nFor now, this is just placeholder text to show how the expanded view would work.`
-    };
+    // Validate file type
+    const allowedTypes = ['pdf', 'docx', 'doc', 'txt'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
     
-    const updated = [...classes, newClass];
-    setClasses(updated);
-    localStorage.setItem("clyvara-classes", JSON.stringify(updated));
+    if (!allowedTypes.includes(fileExtension)) {
+      alert(`Unsupported file type. Allowed: ${allowedTypes.join(', ')}`);
+      return;
+    }
+
+    try {
+      // Get authentication token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated");
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Upload file to backend
+      const response = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      // Add to local state for immediate UI update
+      const newClass = {
+        id: result.material_id,
+        title: result.file_name.replace(/\.[^/.]+$/, ""), // Remove extension
+        description: `Uploaded ${new Date().toLocaleDateString()}. ${result.chunks_created} chunks created for RAG.`,
+        progress: 100,
+        completed: true,
+        type: "uploaded",
+        file: result.file_name,
+        status: result.success ? "processed" : "failed",
+        parsedContent: `File processed successfully!\n\n- File: ${result.file_name}\n- Type: ${result.file_type}\n- Text length: ${result.text_length} characters\n- Chunks created: ${result.chunks_created}\n- Status: Ready for RAG search`
+      };
+      
+      const updated = [...classes, newClass];
+      setClasses(updated);
+      
+      // Refresh materials from backend
+      await loadMaterials();
+      
+      alert(`File uploaded successfully! Created ${result.chunks_created} chunks for RAG.`);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert(`Upload failed: ${error.message}`);
+    }
   };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  // Load materials from backend API
+  const loadMaterials = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch('http://localhost:8000/api/materials', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const backendMaterials = data.materials.map(material => ({
+          id: material.id,
+          title: material.title.replace(/\.[^/.]+$/, ""), // Remove extension
+          description: `Uploaded ${new Date(material.uploaded_at).toLocaleDateString()}. Status: ${material.status}`,
+          progress: material.processing_progress,
+          completed: material.status === "processed",
+          type: "uploaded",
+          file: material.title,
+          status: material.status,
+          parsedContent: `Backend Material\n\n- File: ${material.title}\n- Type: ${material.file_type}\n- Status: ${material.status}\n- Progress: ${material.processing_progress}%\n- Uploaded: ${new Date(material.uploaded_at).toLocaleString()}`
+        }));
+        
+        setClasses(backendMaterials);
+      }
+    } catch (error) {
+      console.error('Error loading materials:', error);
+    }
   };
 
   // Combined Start/View function - opens the expanded view
