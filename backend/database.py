@@ -10,13 +10,20 @@ load_dotenv()
 
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+psycopg://postgres:password@localhost:5432/postgres")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    "DATABASE_URL", "postgresql+psycopg://username:password@your-aws-rds-endpoint:5432/your-database-name")
+
+# Lazy engine creation to avoid import-time database connection
+def get_engine():
+    return create_engine(DATABASE_URL)
+
+def get_session_local():
+    return sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+
 Base = declarative_base()
 
 # Dependency for database sessions
 def get_db():
+    SessionLocal = get_session_local()
     db = SessionLocal()
     try:
         yield db
@@ -131,6 +138,7 @@ class AnalyticsData(Base):
 # Test database connection
 def test_connection():
     try:
+        engine = get_engine()
         with engine.connect() as connection:
             from sqlalchemy import text
             result = connection.execute(text("SELECT 1"))
@@ -143,6 +151,7 @@ def test_connection():
 def create_all_tables():
     """Create all tables in the database"""
     try:
+        engine = get_engine()
         Base.metadata.create_all(bind=engine)
         print("All tables created successfully!")
         return True
@@ -235,15 +244,28 @@ class Material(Base):
     __table_args__ = {'schema': 'main'}
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(String, nullable=False)  # Changed to String for Supabase UUID
     course_id = Column(Integer)
     title = Column(String, nullable=False)
-    file_type = Column(String, nullable=False)  # pdf, pptx, docx
-    file_path = Column(String)  # for actual file storage
+    file_type = Column(String, nullable=False)  # pdf, pptx, docx, txt
+    file_path = Column(String)  # S3 URL or local path
+    file_size = Column(Integer)  # File size in bytes
+    
+    # RAG Processing Fields
     status = Column(String, nullable=False, default="uploaded")  # uploaded, processing, processed, failed
     processing_progress = Column(Integer, default=0)
+    processing_error = Column(Text)  # Error message if processing failed
+    
+    # RAG Content Fields
+    extracted_text = Column(Text)  # Full extracted text
+    chunk_count = Column(Integer, default=0)  # Number of chunks created
+    total_tokens = Column(Integer, default=0)  # Total tokens in document
+    embedding_model = Column(String, default="text-embedding-3-small")  # Model used for embeddings
+    
+    # Timestamps
     uploaded_at = Column(DateTime, server_default=func.now())
     processed_at = Column(DateTime)
+    last_accessed = Column(DateTime)
 
 class Topic(Base):
     __tablename__ = "topics"
@@ -656,12 +678,22 @@ class VectorIndexEntry(Base):
     __tablename__ = "vector_index_entries"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)  # For user-specific queries
     content_hash = Column(String(64), unique=True)
     embedding = Column(JSON, nullable=False)  # Store vector as JSON array
-    content = Column(String, nullable=False)
-    vector_metadata = Column(JSON, default=dict)
+    content = Column(Text, nullable=False)  # Changed to Text for longer content
+    token_count = Column(Integer, default=0)  # Number of tokens in this chunk
+    chunk_index = Column(Integer, default=0)  # Order of chunk in document
+    
+    # Source tracking
     source_type = Column(String(50), nullable=False)  # material, artifact, web, manual
-    source_id = Column(Integer)
+    source_id = Column(Integer)  # References Material.id or other source
+    
+    # Metadata
+    vector_metadata = Column(JSON, default=dict)
+    embedding_model = Column(String, default="text-embedding-3-small")
+    
+    # Usage tracking
     created_at = Column(DateTime, server_default=func.now())
     last_accessed = Column(DateTime)
     access_count = Column(Integer, default=0)
