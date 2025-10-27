@@ -318,13 +318,12 @@ export default function Dashboard() {
           <ModalTitle>{selectedClass?.title}</ModalTitle>
           <p><strong>File:</strong> {selectedClass?.file}</p>
           <p><strong>Uploaded:</strong> {selectedClass?.description}</p>
-
+          
           <h4>Parsed Content:</h4>
           <ParsedContent>
-            {selectedClass?.parsedContent ||
-              "No parsed content available. This would show the text extracted from your PDF, PPT, or DOCX file."}
+            {selectedClass?.parsedContent || "No parsed content available. This would show the text extracted from your PDF, PPT, or DOCX file."}
           </ParsedContent>
-
+          
           <ModalButtons>
             <ActionButton onClick={() => setShowExpandedView(false)}>
               Close
@@ -332,6 +331,8 @@ export default function Dashboard() {
           </ModalButtons>
         </ModalContent>
       </ModalOverlay>
-    </>
+
+      <ChatBot />
+    </Shell>
   );
 }
