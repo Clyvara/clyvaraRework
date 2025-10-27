@@ -1,5 +1,16 @@
 import React from 'react'
+import styled from 'styled-components'
 import { supabase } from '../utils/supabaseClient'
+
+const Button = styled.button`
+  background-color: #4285f4;
+  color: white;
+  padding: 12.8px 15.2px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: bold;
+`
 
 export default function GoogleSignInButton() {
   async function handleGoogleLogin() {
@@ -14,19 +25,8 @@ export default function GoogleSignInButton() {
   }
 
   return (
-    <button
-      onClick={handleGoogleLogin}
-      style={{
-        backgroundColor: '#4285F4',
-        color: 'white',
-        padding: '12.8px, 15.2px',
-        border: 'none',
-        borderRadius: '999px',
-        cursor: 'pointer',
-        fontWeight: 'bold'
-      }}
-    >
+    <Button onClick={handleGoogleLogin}>
       Continue with Google
-    </button>
+    </Button>
   )
 }
