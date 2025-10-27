@@ -1115,7 +1115,7 @@ Please provide:
 
 Be specific, evidence-based, and consider the patient's comorbidities and procedure requirements."""
 
-    messages = [
+        messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context}
         ]
