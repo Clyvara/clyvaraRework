@@ -1,10 +1,27 @@
 import React from 'react'
+import styled from 'styled-components'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabaseClient'
 
+const Button = styled.button`
+  background-color: #4285f4;
+  color: white;
+  padding: 12.8px 15.2px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: bold;
+`
+
 export default function GoogleSignInButton() {
+  const navigate = useNavigate()
+  
   async function handleGoogleLogin() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`
+      }
     })
     if (error) {
       console.error('Error logging in with Google:', error.message)
@@ -14,19 +31,8 @@ export default function GoogleSignInButton() {
   }
 
   return (
-    <button
-      onClick={handleGoogleLogin}
-      style={{
-        backgroundColor: '#4285F4',
-        color: 'white',
-        padding: '10px 16px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontWeight: 'bold'
-      }}
-    >
+    <Button onClick={handleGoogleLogin}>
       Continue with Google
-    </button>
+    </Button>
   )
 }

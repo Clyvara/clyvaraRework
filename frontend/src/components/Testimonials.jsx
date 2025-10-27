@@ -10,20 +10,21 @@ const Container = styled.div`
   font-family: "General Sans";
   border-top-left-radius: 100px;
   border-top-right-radius: 100px;
-  padding-bottom: 78px;
+  padding-bottom: 40px;
+  margin-top: -80px;
+  min-height: calc(100vh - 196px);
+  
 `;
 
 const Tagline = styled.div`
   color: white;
   font-family: "General Sans", sans-serif;
-  font-size: 70px;
+  font-size: 40px;
   text-align: center;
   font-weight: 400;
-  border-top-left-radius: 100px;
-  border-top-right-radius: 100px;
   width: 100%;
   padding-top: 124px;
-  padding-bottom: 124px;
+  padding-bottom: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -33,7 +34,7 @@ const Grid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 34px;
-  width: 80%;
+  width: 90%;
   margin: 0 auto;
 `;
 

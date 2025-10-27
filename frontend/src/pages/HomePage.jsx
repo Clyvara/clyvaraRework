@@ -6,20 +6,22 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import ChatBot from "../components/ChatBot.jsx";
 import Footer from "../components/Footer.jsx";
-import Branie from "../components/Branie.jsx";
+import Branie from "../components/Brainie.jsx";
 import LeftHomePage from "../components/LeftHomePage.jsx";
 import Testimonials from "../components/Testimonials.jsx";
 import { useAuth } from "../utils/useAuth";
 
+
 const Container = styled.main`
   display: grid;
+  max-width: 1440px;
   grid-template-columns: 1fr 1fr;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 3rem;
   width: 100%;
-  min-height: calc(100vh - 196px);
-  background: #ADCAF0;
+  min-height: calc(100vh + 100px);
+  background: var(--central-park-sky);
   padding: 48px 58px;
   box-sizing: border-box;
   margin-top 20px;

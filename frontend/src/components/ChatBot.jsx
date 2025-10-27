@@ -2,123 +2,188 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import styled from "styled-components";
 import { buildDomManifest, summarizePageContext } from "../utils/pageContext.js";
 import { supabase } from "../utils/supabaseClient.js";
+import brainie from "../assets/brainie.png";
 
-const ChatWrap = styled.div`
-  display: grid;
-  grid-template-rows: 1fr auto;
-  height: 540px;
-  width: 300px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  overflow: hidden;
-  margin-left: auto;
-  justify-self: end;
+// New design styled components
+const FloatingContainer = styled.div`
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
 `;
 
-const Messages = styled.div`
-  padding: 1rem;
-  overflow-y: auto;
-  background: #fafafa;
-  font-size: 12px;
-`;
-
-const Bubble = styled.div`
-  max-width: 72%;
-  padding: 0.7rem 0.9rem;
-  border-radius: 14px;
-  line-height: 1.35;
-  margin: 0.4rem 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-
-  ${({ role }) =>
-    role === "user"
-      ? `
-        margin-left: auto;
-        background: #111827;
-        color: #fff;
-        border-bottom-right-radius: 6px;
-      `
-      : `
-        margin-right: auto;
-        background: #f3f4f6;
-        color: #111827;
-        border-bottom-left-radius: 6px;
-      `}
-`;
-
-const Meta = styled.div`
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-top: 0.2rem;
-`;
-
-const Composer = styled.form`
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.6rem;
-  padding: 0.75rem;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
-`;
-
-const Input = styled.textarea`
-  resize: none;
-  height: 48px;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  outline: none;
-  font-size: 12px;
-
-  &:focus {
-    border-color: #111827;
+const ChatToggleButton = styled.button`
+  all: unset;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #20359A;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+    background: #1a2a7a;
   }
 `;
 
-const Send = styled.button`
-  height: 48px;
-  padding: 0 1rem;
-  border: 0;
-  border-radius: 10px;
-  background: #111827;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
+const BrainieIcon = styled.img`
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+`;
 
+const ChatWindow = styled.div`
+  width: 350px;
+  height: 500px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const ChatHeader = styled.div`
+  padding: 12px 16px;
+  background: #20359A;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const ChatTitle = styled.h3`
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+`;
+
+const CloseButton = styled.button`
+  all: unset;
+  color: white;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 20px;
+  
+  &:hover {
+    opacity: 0.8;
+  }
+`;
+
+const MessagesContainer = styled.div`
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const MessageBubble = styled.div`
+  max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  word-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.4;
+  
+  ${p => p.$isUser ? `
+    align-self: flex-end;
+    background: #20359A;
+    color: white;
+    border-bottom-right-radius: 4px;
+  ` : `
+    align-self: flex-start;
+    background: #f0f0f0;
+    color: #333;
+    border-bottom-left-radius: 4px;
+  `}
+`;
+
+const InputContainer = styled.div`
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  gap: 8px;
+  background: white;
+`;
+
+const ChatInput = styled.input`
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-radius: 24px;
+  font-size: 14px;
+  
+  &:focus {
+    outline: none;
+    border-color: #20359A;
+  }
+`;
+
+const SendButton = styled.button`
+  all: unset;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #20359A;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  
+  &:hover {
+    background: #1a2a7a;
+  }
+  
   &:disabled {
-    opacity: 0.6;
+    background: #ccc;
     cursor: not-allowed;
   }
 `;
 
-const HeaderBar = styled.div`
+// Status indicator for connection
+const StatusIndicator = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-  color: black;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
 `;
 
 const Dot = styled.span`
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: ${({ $ok }) => ($ok ? "#10b981" : "#f59e0b")};
 `;
 
 export default function Chat() {
+  // New minimizable state
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Keep all existing working state and functionality
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hi! Ask me about Clyvara or any questions you might have about medicine!" },
+    { 
+      role: "assistant", 
+      text: "Hi! I'm Brainie! Ask me about Clyvara or anything related to your studies!" 
+    },
   ]);
   const [input, setInput] = useState("");
   const [threadId, setThreadId] = useState(() => sessionStorage.getItem("thread_id") || null);
   const [loading, setLoading] = useState(false);
-  const scrollerRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
+  // Keep all existing useEffect hooks
   useEffect(() => {
     if (threadId) sessionStorage.setItem("thread_id", threadId);
   }, [threadId]);
@@ -129,18 +194,16 @@ export default function Chat() {
   }, [window.location.pathname, document.title]);
 
   useEffect(() => {
-    scrollerRef.current?.scrollTo({
-      top: scrollerRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send(e) {
+  // Keep the existing working send function
+  async function handleSend(e) {
     e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
 
-    setMessages((m) => [...m, { role: "user", text }]);
+    setMessages(prev => [...prev, { role: "user", text }]);
     setInput("");
     setLoading(true);
 
@@ -164,20 +227,17 @@ export default function Chat() {
         }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
       setThreadId(data.thread_id);
-      setMessages((m) => [...m, { role: "assistant", text: data.reply }]);
+      setMessages(prev => [...prev, { role: "assistant", text: data.reply }]);
     } catch (err) {
-      setMessages((m) => [
-        ...m,
+      setMessages(prev => [
+        ...prev,
         {
           role: "assistant",
-          text: `Error: ${err.message}`,
+          text: "Sorry, I'm having trouble connecting right now. Please try again later.",
         },
       ]);
     } finally {
@@ -185,39 +245,57 @@ export default function Chat() {
     }
   }
 
+  // Use new design but keep existing functionality
   return (
-    <ChatWrap>
-      <HeaderBar>
-        <Dot $ok={!loading} />
-        <strong>Chatbot</strong>
-      </HeaderBar>
-
-      <Messages ref={scrollerRef}>
-        {messages.map((m, i) => (
-          <div key={i}>
-            <Bubble role={m.role}>{m.text}</Bubble>
-            <Meta>{m.role === "user" ? "You" : "Assistant"}</Meta>
-          </div>
-        ))}
-        {loading && <Meta>Thinking…</Meta>}
-      </Messages>
-
-      <Composer onSubmit={send}>
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              e.currentTarget.form.requestSubmit();
-            }
-          }}
-        />
-        <Send type="submit" disabled={loading}>
-          Send
-        </Send>
-      </Composer>
-    </ChatWrap>
+    <FloatingContainer>
+      {isOpen ? (
+        <ChatWindow>
+          <ChatHeader>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              
+              <ChatTitle>Brainie Assistant</ChatTitle>
+            </div>
+            <CloseButton onClick={() => setIsOpen(false)}>×</CloseButton>
+          </ChatHeader>
+          
+          <MessagesContainer>
+            {messages.map((message, index) => (
+              <MessageBubble key={index} $isUser={message.role === "user"}>
+                {message.text}
+              </MessageBubble>
+            ))}
+            {loading && (
+              <MessageBubble $isUser={false}>
+                Thinking... 
+              </MessageBubble>
+            )}
+            <div ref={messagesEndRef} />
+          </MessagesContainer>
+          
+          <InputContainer>
+            <ChatInput
+              type="text"
+              placeholder="Ask Brainie anything..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') handleSend(e);
+              }}
+              disabled={loading}
+            />
+            <SendButton 
+              onClick={handleSend} 
+              disabled={!input.trim() || loading}
+            >
+              ↑
+            </SendButton>
+          </InputContainer>
+        </ChatWindow>
+      ) : (
+        <ChatToggleButton onClick={() => setIsOpen(true)}>
+          <BrainieIcon src={brainie} alt="Brainie" />
+        </ChatToggleButton>
+      )}
+    </FloatingContainer>
   );
 }

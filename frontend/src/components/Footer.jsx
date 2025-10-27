@@ -11,19 +11,19 @@ const Container = styled.footer`
   padding: 80px 200px 100px 100px;
   box-sizing: border-box;
   font-family: "Rethink Sans";
-
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 2rem;
+  margin-top: -40px;
 `;
 
 // Logo and Tagline
 const Left = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;             
+  gap: 1rem;             
   max-width: 600px;
 `;
 
@@ -39,7 +39,7 @@ const Logo = styled.img`
 `;
 
 const Title = styled.h1`
-  font-size: 72px;
+  font-size: 50px;
   font-weight: 700;
   margin: 0;
   color: #E7A0CC;
@@ -47,15 +47,15 @@ const Title = styled.h1`
 
 const Tagline = styled.p`
   margin: 0;
-  font-size: 48px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 500;
   color: #F9F9F9;
 `;
 
 const Columns = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 7rem;
+  gap: 3rem;
 `;
 
 const Column = styled.div`
@@ -66,7 +66,7 @@ const Column = styled.div`
 
 const ColumnTitle = styled.h2`
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
   margin-bottom: 0.25rem;
   color: white;
 `;

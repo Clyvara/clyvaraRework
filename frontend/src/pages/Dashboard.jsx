@@ -1,133 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
-import clyvaralogo from "../assets/clyvaranewlogo.svg";
 import ChatBot from "../components/ChatBot.jsx";
-import { supabase } from "../utils/supabaseClient.js";
-
-/* ---------- Layout ---------- */
-const Shell = styled.div`
-  display: grid;
-  grid-template-columns: ${p => p.$collapsed ? '80px' : '220px'} 1fr;
-  min-height: 100vh;
-  background: #f8f9fa;
-  transition: grid-template-columns 0.3s ease;
-`;
-
-const Sidebar = styled.aside`
-  background: #20359A;
-  color: white;
-  padding: 24px ${p => p.$collapsed ? '12px' : '16px'};
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  position: relative;
-  transition: padding 0.3s ease;
-`;
-
-const Logo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 500;
-  font-family: 'Rethink Sans';
-  font-size: 30px;
-  white-space: nowrap;
-  color: #E7A0CC;
-`;
-
-const LogoImg = styled.img`
-  width: 50px;
-  height: 50px;
-  object-fit: contain;
-  flex-shrink: 0;
-`;
-
-const LogoText = styled.span`
-  opacity: ${p => p.$collapsed ? 0 : 1};
-  visibility: ${p => p.$collapsed ? 'hidden' : 'visible'};
-  transition: all 0.3s ease;
-`;
-
-const Nav = styled.nav`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 24px;
-`;
-
-const NavItem = styled.button`
-  all: unset;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  background: ${(p) => (p.$active ? "rgba(255,255,255,.2)" : "transparent")};
-  white-space: nowrap;
-  transition: background 0.2s ease;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-  &:focus {
-    outline: none;
-  }
-`;
-
-const NavIcon = styled.img`
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  flex-shrink: 0;
-`;
-
-const NavText = styled.span`
-  opacity: ${p => p.$collapsed ? 0 : 1};
-  visibility: ${p => p.$collapsed ? 'hidden' : 'visible'};
-  transition: all 0.3s ease;
-`;
-
-const ToggleButton = styled.button`
-  all: unset;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  white-space: nowrap;
-  margin-top: ${p => p.$collapsed ? '0' : '24px'};
-  transition: background 0.2s ease;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-  &:focus {
-    outline: none;
-  }
-`;
-
-const ToggleIcon = styled.svg`
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-`;
-
-const ToggleText = styled.span`
-  opacity: ${p => p.$collapsed ? 0 : 1};
-  visibility: ${p => p.$collapsed ? 'hidden' : 'visible'};
-  transition: all 0.3s ease;
-`;
-
-/* ---------- Main Content ---------- */
-const Main = styled.main`
-  padding: 28px 32px;
-  background: white;
-`;
 
 const Header = styled.header`
   display: flex;
@@ -160,7 +33,6 @@ const ActionButton = styled.button`
   }
 `;
 
-/* ---------- Progress Bar ---------- */
 const ProgressBar = styled.div`
   height: 6px;
   background: #f0f0f0;
@@ -177,7 +49,6 @@ const ProgressFill = styled.div`
   transition: width 0.3s ease;
 `;
 
-/* ---------- Class Cards ---------- */
 const ClassGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -268,7 +139,21 @@ const DeleteButton = styled.button`
   }
 `;
 
-/* ---------- Expanded View Modal ---------- */
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 60px 20px;
+  
+  h3 {
+    color: #666;
+    margin-bottom: 8px;
+  }
+  
+  p {
+    color: #888;
+    margin-bottom: 20px;
+  }
+`;
+
 const ModalOverlay = styled.div`
   position: fixed;
   top: 0;
@@ -316,269 +201,119 @@ const ModalButtons = styled.div`
   margin-top: 20px;
 `;
 
-/* ---------- Empty State ---------- */
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 60px 20px;
-  
-  h3 {
-    color: #666;
-    margin-bottom: 8px;
-  }
-  
-  p {
-    color: #888;
-    margin-bottom: 20px;
-  }
-`;
-
 const FileInput = styled.input`
   display: none;
 `;
 
-/* ---------- Component ---------- */
 export default function Dashboard() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [showExpandedView, setShowExpandedView] = useState(false);
   const fileInputRef = useRef();
 
-  const navItems = [
-    { label: "Account", icon: "/src/assets/account.png" },
-    { label: "Dashboard", icon: "/src/assets/dashboard.png", active: true },
-    { label: "Learning Plan", icon: "/src/assets/learningplan.png" },
-    { label: "Care Plan", icon: "/src/assets/careplan.png" },
-  ];
-
-  // Load classes from localStorage
   useEffect(() => {
-    // Load materials from backend API instead of localStorage
-    loadMaterials();
+    const saved = localStorage.getItem("clyvara-classes");
+    if (saved) {
+      setClasses(JSON.parse(saved));
+    }
   }, []);
 
-  const handleToggleSidebar = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-  };
-
-  // Real file upload to backend API
-  const handleFileUpload = async (event) => {
+  const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Validate file type
-    const allowedTypes = ['pdf', 'docx', 'doc', 'txt'];
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(fileExtension)) {
-      alert(`Unsupported file type. Allowed: ${allowedTypes.join(', ')}`);
-      return;
-    }
+    const newClass = {
+      id: Date.now(),
+      title: file.name.replace(/\.[^/.]+$/, ""),
+      description: `Uploaded ${new Date().toLocaleDateString()}. Ready to study.`,
+      progress: 0,
+      completed: false,
+      type: "uploaded",
+      file: file.name,
+      parsedContent: `This is sample parsed content from ${file.name}.\n\nIt would show the actual text extracted from your PDF, PPT, or DOCX file.\n\nFor now, this is just placeholder text to show how the expanded view would work.`
+    };
 
-    try {
-      // Get authentication token
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("Not authenticated");
-      }
-
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // Upload file to backend
-      const response = await fetch('http://localhost:8000/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // Add to local state for immediate UI update
-      const newClass = {
-        id: result.material_id,
-        title: result.file_name.replace(/\.[^/.]+$/, ""), // Remove extension
-        description: `Uploaded ${new Date().toLocaleDateString()}. ${result.chunks_created} chunks created for RAG.`,
-        progress: 100,
-        completed: true,
-        type: "uploaded",
-        file: result.file_name,
-        status: result.success ? "processed" : "failed",
-        parsedContent: `File processed successfully!\n\n- File: ${result.file_name}\n- Type: ${result.file_type}\n- Text length: ${result.text_length} characters\n- Chunks created: ${result.chunks_created}\n- Status: Ready for RAG search`
-      };
-      
-      const updated = [...classes, newClass];
-      setClasses(updated);
-      
-      // Refresh materials from backend
-      await loadMaterials();
-      
-      alert(`File uploaded successfully! Created ${result.chunks_created} chunks for RAG.`);
-      
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert(`Upload failed: ${error.message}`);
-    }
+    const updated = [...classes, newClass];
+    setClasses(updated);
+    localStorage.setItem("clyvara-classes", JSON.stringify(updated));
   };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  // Load materials from backend API
-  const loadMaterials = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch('http://localhost:8000/api/materials', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const backendMaterials = data.materials.map(material => ({
-          id: material.id,
-          title: material.title.replace(/\.[^/.]+$/, ""), // Remove extension
-          description: `Uploaded ${new Date(material.uploaded_at).toLocaleDateString()}. Status: ${material.status}`,
-          progress: material.processing_progress,
-          completed: material.status === "processed",
-          type: "uploaded",
-          file: material.title,
-          status: material.status,
-          parsedContent: `Backend Material\n\n- File: ${material.title}\n- Type: ${material.file_type}\n- Status: ${material.status}\n- Progress: ${material.processing_progress}%\n- Uploaded: ${new Date(material.uploaded_at).toLocaleString()}`
-        }));
-        
-        setClasses(backendMaterials);
-      }
-    } catch (error) {
-      console.error('Error loading materials:', error);
-    }
-  };
-
-  // Combined Start/View function - opens the expanded view
   const handleStartClass = (classItem) => {
     setSelectedClass(classItem);
     setShowExpandedView(true);
   };
 
   const handleDeleteClass = (classId) => {
-    const updated = classes.filter(classItem => classItem.id !== classId);
+    const updated = classes.filter(c => c.id !== classId);
     setClasses(updated);
     localStorage.setItem("clyvara-classes", JSON.stringify(updated));
   };
 
   return (
-    <Shell $collapsed={sidebarCollapsed}>
-      {/* Sidebar */}
-      <Sidebar $collapsed={sidebarCollapsed}>
+    <>
+      <Header>
+        <Title>Dashboard</Title>
         <div>
-          <Logo>
-            <LogoImg src={clyvaralogo} alt="Clyvara logo" />
-            <LogoText $collapsed={sidebarCollapsed}>Clyvara</LogoText>
-          </Logo>
-
-          {!sidebarCollapsed && (
-            <Nav>
-              {navItems.map(({ label, icon, active }) => (
-                <NavItem key={label} $active={active}>
-                  <NavIcon src={icon} alt="" onError={(e) => (e.target.style.display = "none")} />
-                  <NavText>{label}</NavText>
-                </NavItem>
-              ))}
-            </Nav>
-          )}
-
-          <ToggleButton 
-            onClick={handleToggleSidebar}
-            $collapsed={sidebarCollapsed}
-          >
-            <ToggleIcon viewBox="0 0 16 16">
-              {sidebarCollapsed ? (
-                <>
-                  <line x1="2" y1="4" x2="14" y2="4" stroke="white" strokeWidth="2" />
-                  <line x1="2" y1="8" x2="14" y2="8" stroke="white" strokeWidth="2" />
-                  <line x1="2" y1="12" x2="14" y2="12" stroke="white" strokeWidth="2" />
-                </>
-              ) : (
-                <path d="M11 2 L5 8 L11 14" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" />
-              )}
-            </ToggleIcon>
-            {!sidebarCollapsed && <ToggleText>Collapse</ToggleText>}
-          </ToggleButton>
+          <ActionButton onClick={handleUploadClick}>
+            Upload Material
+          </ActionButton>
+          <FileInput
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".pdf,.txt,.doc,.docx"
+          />
         </div>
-      </Sidebar>
+      </Header>
 
-      {/* Main */}
-      <Main>
-        <Header>
-          <Title>Dashboard</Title>
-          <div>
-            <ActionButton onClick={handleUploadClick}>
-              Upload Material
-            </ActionButton>
-            <FileInput
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".pdf,.txt,.doc,.docx"
-            />
-          </div>
-        </Header>
+      {classes.length === 0 ? (
+        <EmptyState>
+          <h3>No classes yet</h3>
+          <p>Upload your first study material to get started</p>
+          <StartButton onClick={handleUploadClick}>
+            Upload Material
+          </StartButton>
+        </EmptyState>
+      ) : (
+        <section>
+          <ClassGrid>
+            {classes.map(classItem => (
+              <ClassCard key={classItem.id}>
+                <ClassHeader>
+                  <ClassTitle>{classItem.title}</ClassTitle>
+                  <ClassBadge $completed={classItem.completed}>
+                    {classItem.completed ? "Done" : "In Progress"}
+                  </ClassBadge>
+                </ClassHeader>
 
-        {classes.length === 0 ? (
-          <EmptyState>
-            <h3>No classes yet</h3>
-            <p>Upload your first study material to get started</p>
-            <StartButton onClick={handleUploadClick}>
-              Upload Material
-            </StartButton>
-          </EmptyState>
-        ) : (
-          <section>
-            <ClassGrid>
-              {classes.map(classItem => (
-                <ClassCard key={classItem.id}>
-                  <ClassHeader>
-                    <ClassTitle>{classItem.title}</ClassTitle>
-                    <ClassBadge $completed={classItem.completed}>
-                      {classItem.completed ? 'Done' : 'In Progress'}
-                    </ClassBadge>
-                  </ClassHeader>
-                  
-                  <ClassDescription>{classItem.description}</ClassDescription>
-                  
-                  <ProgressBar>
-                    <ProgressFill $progress={classItem.progress} />
-                  </ProgressBar>
-                  
-                  <div style={{ textAlign: 'center' }}>
-                    <StartButton onClick={() => handleStartClass(classItem)}>
-                      {classItem.progress === 0 ? 'Start' : 
-                       classItem.progress === 100 ? 'Review' : 'Continue'}
-                    </StartButton>
-                    <DeleteButton onClick={() => handleDeleteClass(classItem.id)}>
-                      Delete
-                    </DeleteButton>
-                  </div>
-                </ClassCard>
-              ))}
-            </ClassGrid>
-          </section>
-        )}
-      </Main>
+                <ClassDescription>{classItem.description}</ClassDescription>
 
-      {/* Expanded View Modal */}
+                <ProgressBar>
+                  <ProgressFill $progress={classItem.progress} />
+                </ProgressBar>
+
+                <div style={{ textAlign: "center" }}>
+                  <StartButton onClick={() => handleStartClass(classItem)}>
+                    {classItem.progress === 0
+                      ? "Start"
+                      : classItem.progress === 100
+                      ? "Review"
+                      : "Continue"}
+                  </StartButton>
+                  <DeleteButton onClick={() => handleDeleteClass(classItem.id)}>
+                    Delete
+                  </DeleteButton>
+                </div>
+              </ClassCard>
+            ))}
+          </ClassGrid>
+        </section>
+      )}
+
       <ModalOverlay $show={showExpandedView}>
         <ModalContent>
           <ModalTitle>{selectedClass?.title}</ModalTitle>
@@ -597,8 +332,9 @@ export default function Dashboard() {
           </ModalButtons>
         </ModalContent>
       </ModalOverlay>
-
+      
+      {/* ChatBot Component */}
       <ChatBot />
-    </Shell>
+      </>
   );
 }
