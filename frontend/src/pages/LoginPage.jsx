@@ -211,7 +211,7 @@ export default function Login() {
       setMsg(error.message || "Unable to log in. Please check your credentials.");
       return;
     }
-    nav("/", { replace: true });
+    nav("/dashboard", { replace: true });
   }
 
   return (
