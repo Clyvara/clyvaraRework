@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import ChatBot from "../components/ChatBot.jsx";
+import { supabase } from "../utils/supabaseClient";
 
 const Header = styled.header`
   display: flex;
@@ -175,6 +176,7 @@ const ModalContent = styled.div`
   max-width: 600px;
   max-height: 80vh;
   overflow-y: auto;
+  color: #333;
 `;
 
 const ModalTitle = styled.h2`
@@ -184,14 +186,35 @@ const ModalTitle = styled.h2`
 
 const ParsedContent = styled.div`
   background: #f8f9fa;
-  padding: 16px;
+  padding: 20px;
   border-radius: 8px;
   margin: 16px 0;
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
   font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.6;
+  color: #333;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  
+  /* Custom scrollbar */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
 `;
 
 const ModalButtons = styled.div`
@@ -206,51 +229,132 @@ const FileInput = styled.input`
 `;
 
 export default function Dashboard() {
-  const [classes, setClasses] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [materials, setMaterials] = useState([]);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [showExpandedView, setShowExpandedView] = useState(false);
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
 
   useEffect(() => {
-    const saved = localStorage.getItem("clyvara-classes");
-    if (saved) {
-      setClasses(JSON.parse(saved));
-    }
+    loadMaterials();
   }, []);
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const newClass = {
-      id: Date.now(),
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      description: `Uploaded ${new Date().toLocaleDateString()}. Ready to study.`,
-      progress: 0,
-      completed: false,
-      type: "uploaded",
-      file: file.name,
-      parsedContent: `This is sample parsed content from ${file.name}.\n\nIt would show the actual text extracted from your PDF, PPT, or DOCX file.\n\nFor now, this is just placeholder text to show how the expanded view would work.`
-    };
+    setLoading(true);
 
-    const updated = [...classes, newClass];
-    setClasses(updated);
-    localStorage.setItem("clyvara-classes", JSON.stringify(updated));
+    try {
+      // Get Supabase session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Upload to backend
+      const response = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      console.log('Upload result:', result);
+
+      // Wait a moment for backend processing to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Reload materials to show the new upload
+      await loadMaterials();
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert(`Upload failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMaterials = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch('http://localhost:8000/api/materials', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const materialsData = await response.json();
+        console.log('Loaded materials:', materialsData);
+        // Handle both array and object responses
+        const materialsArray = Array.isArray(materialsData) ? materialsData : materialsData.materials || [];
+        console.log('Materials statuses:', materialsArray.map(m => ({ id: m.id, title: m.title, status: m.status })));
+        setMaterials(materialsArray);
+      }
+    } catch (error) {
+      console.error('Error loading materials:', error);
+    }
   };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleStartClass = (classItem) => {
-    setSelectedClass(classItem);
-    setShowExpandedView(true);
+  const handleStartMaterial = (material) => {
+    console.log('Starting material:', material);
+    console.log('Extracted text length:', material.extracted_text?.length || 0);
+    console.log('First 200 chars of extracted text:', material.extracted_text?.substring(0, 200) || 'No text');
+    try {
+      setSelectedMaterial(material);
+      setShowExpandedView(true);
+    } catch (error) {
+      console.error('Error opening material:', error);
+    }
   };
 
-  const handleDeleteClass = (classId) => {
-    const updated = classes.filter(c => c.id !== classId);
-    setClasses(updated);
-    localStorage.setItem("clyvara-classes", JSON.stringify(updated));
+  const handleDeleteMaterial = async (materialId) => {
+    if (!confirm('Are you sure you want to delete this material?')) {
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(`http://localhost:8000/api/materials/${materialId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        await loadMaterials(); // Reload materials after deletion
+        console.log('Material deleted successfully');
+      } else {
+        const errorData = await response.json();
+        console.error('Delete failed:', errorData);
+        alert(`Failed to delete material: ${errorData.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting material:', error);
+      alert(`Error deleting material: ${error.message}`);
+    }
   };
 
   return (
@@ -258,8 +362,38 @@ export default function Dashboard() {
       <Header>
         <Title>Dashboard</Title>
         <div>
-          <ActionButton onClick={handleUploadClick}>
-            Upload Material
+          <ActionButton 
+            onClick={handleUploadClick} 
+            disabled={loading}
+            style={{
+              backgroundColor: '#20359A',
+              color: 'white',
+              padding: '12px 24px',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              fontSize: '16px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              opacity: loading ? 0.7 : 1,
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.target.style.backgroundColor = '#1a2a7a';
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.target.style.backgroundColor = '#20359A';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+              }
+            }}
+          >
+            {loading ? 'Uploading...' : 'Upload Material'}
           </ActionButton>
           <FileInput
             type="file"
@@ -270,9 +404,9 @@ export default function Dashboard() {
         </div>
       </Header>
 
-      {classes.length === 0 ? (
+      {!materials || materials.length === 0 ? (
         <EmptyState>
-          <h3>No classes yet</h3>
+          <h3>No materials yet</h3>
           <p>Upload your first study material to get started</p>
           <StartButton onClick={handleUploadClick}>
             Upload Material
@@ -281,30 +415,33 @@ export default function Dashboard() {
       ) : (
         <section>
           <ClassGrid>
-            {classes.map(classItem => (
-              <ClassCard key={classItem.id}>
+            {(materials || []).map(material => (
+              <ClassCard key={material.id}>
                 <ClassHeader>
-                  <ClassTitle>{classItem.title}</ClassTitle>
-                  <ClassBadge $completed={classItem.completed}>
-                    {classItem.completed ? "Done" : "In Progress"}
+                  <ClassTitle>{material.title}</ClassTitle>
+                  <ClassBadge $completed={material.status === 'processed'}>
+                    {material.status === 'processed' ? "Ready" : material.status === 'processing' ? "Processing" : "Uploaded"}
                   </ClassBadge>
                 </ClassHeader>
 
-                <ClassDescription>{classItem.description}</ClassDescription>
+                <ClassDescription>
+                  {material.status === 'processed' 
+                    ? `Ready to study - ${material.chunk_count} chunks processed`
+                    : material.status === 'processing'
+                    ? 'Processing content...'
+                    : `Uploaded ${new Date(material.uploaded_at).toLocaleDateString()}`
+                  }
+                </ClassDescription>
 
                 <ProgressBar>
-                  <ProgressFill $progress={classItem.progress} />
+                  <ProgressFill $progress={material.status === 'processed' ? 100 : material.processing_progress || 0} />
                 </ProgressBar>
 
                 <div style={{ textAlign: "center" }}>
-                  <StartButton onClick={() => handleStartClass(classItem)}>
-                    {classItem.progress === 0
-                      ? "Start"
-                      : classItem.progress === 100
-                      ? "Review"
-                      : "Continue"}
+                  <StartButton onClick={() => handleStartMaterial(material)}>
+                    {material.status === 'processed' ? "Study" : "View"}
                   </StartButton>
-                  <DeleteButton onClick={() => handleDeleteClass(classItem.id)}>
+                  <DeleteButton onClick={() => handleDeleteMaterial(material.id)}>
                     Delete
                   </DeleteButton>
                 </div>
@@ -316,17 +453,138 @@ export default function Dashboard() {
 
       <ModalOverlay $show={showExpandedView}>
         <ModalContent>
-          <ModalTitle>{selectedClass?.title}</ModalTitle>
-          <p><strong>File:</strong> {selectedClass?.file}</p>
-          <p><strong>Uploaded:</strong> {selectedClass?.description}</p>
+          <ModalTitle>{selectedMaterial?.title || 'Loading...'}</ModalTitle>
+          <p><strong>File Type:</strong> {selectedMaterial?.file_type || 'Unknown'}</p>
+          <p><strong>Status:</strong> {selectedMaterial?.status || 'Unknown'}</p>
+          <p><strong>Uploaded:</strong> {selectedMaterial?.uploaded_at ? new Date(selectedMaterial.uploaded_at).toLocaleDateString() : 'Unknown'}</p>
           
-          <h4>Parsed Content:</h4>
+          <h4>Content Preview:</h4>
           <ParsedContent>
-            {selectedClass?.parsedContent || "No parsed content available. This would show the text extracted from your PDF, PPT, or DOCX file."}
+            {selectedMaterial?.extracted_text && selectedMaterial.extracted_text.length > 0
+              ? (() => {
+                  const text = selectedMaterial.extracted_text;
+                  const previewLength = 1500;
+                  const preview = text.substring(0, previewLength);
+                  const isTruncated = text.length > previewLength;
+                  
+                  // Clean up the text for better readability
+                  const cleanedText = preview
+                    .replace(/\n\s*\n/g, '\n\n') // Remove excessive line breaks
+                    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+                    .trim();
+                  
+                  return (
+                    <div>
+                      <div style={{ 
+                        lineHeight: '1.6', 
+                        fontSize: '14px',
+                        color: '#2c3e50',
+                        textAlign: 'left'
+                      }}>
+                        {cleanedText}
+                        {isTruncated && (
+                          <span style={{ 
+                            color: '#7f8c8d', 
+                            fontStyle: 'italic',
+                            display: 'block',
+                            marginTop: '10px',
+                            padding: '8px',
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '4px',
+                            border: '1px solid #e9ecef'
+                          }}>
+                            ... (showing first {previewLength.toLocaleString()} of {text.length.toLocaleString()} characters)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
+              : selectedMaterial?.status === 'processing' 
+                ? <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: '#6c757d',
+                    fontStyle: 'italic'
+                  }}>
+                    <div style={{ fontSize: '18px', marginBottom: '10px' }}>⏳</div>
+                    Content is being processed. Please wait...
+                  </div>
+                : selectedMaterial?.status === 'failed'
+                ? <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: '#dc3545',
+                    backgroundColor: '#f8d7da',
+                    borderRadius: '6px',
+                    border: '1px solid #f5c6cb'
+                  }}>
+                    <div style={{ fontSize: '18px', marginBottom: '10px' }}>❌</div>
+                    Content processing failed. Please try uploading again.
+                  </div>
+                : selectedMaterial?.status === 'processed'
+                ? <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: '#856404',
+                    backgroundColor: '#fff3cd',
+                    borderRadius: '6px',
+                    border: '1px solid #ffeaa7'
+                  }}>
+                    <div style={{ fontSize: '18px', marginBottom: '10px' }}>⚠️</div>
+                    Content processing completed but no text was extracted. This might be a scanned PDF or image-based document.
+                  </div>
+                : <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: '#6c757d',
+                    fontStyle: 'italic'
+                  }}>
+                    Content is being processed. This will show the extracted text from your uploaded file.
+                  </div>}
           </ParsedContent>
           
+          {selectedMaterial?.extracted_text && selectedMaterial.extracted_text.length > 0 && (
+            <div style={{ 
+              marginTop: '10px', 
+              padding: '8px 12px',
+              backgroundColor: '#e9ecef',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#6c757d',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span><strong>Text Length:</strong> {selectedMaterial.extracted_text.length.toLocaleString()} characters</span>
+              <span><strong>Words:</strong> {selectedMaterial.extracted_text.split(/\s+/).filter(word => word.length > 0).length.toLocaleString()}</span>
+            </div>
+          )}
+          
           <ModalButtons>
-            <ActionButton onClick={() => setShowExpandedView(false)}>
+            <ActionButton 
+              onClick={() => setShowExpandedView(false)}
+              style={{ 
+                backgroundColor: '#4A90E2', 
+                color: 'white',
+                padding: '10px 20px',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#357ABD';
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#4A90E2';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+              }}
+            >
               Close
             </ActionButton>
           </ModalButtons>
