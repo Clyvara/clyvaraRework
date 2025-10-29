@@ -1102,55 +1102,6 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
         print(f"Error building care plan context: {e}")
         return care_plan.exported_text or ""
 
-async def generate_care_plan_recommendations(context: str, client) -> dict:
-    """Generate AI recommendations for care plan"""
-    try:
-        system_prompt = """You are an expert anesthesiologist AI assistant. Based on the patient information and relevant medical literature provided, generate comprehensive anesthesia care plan recommendations.
-
-Please provide:
-1. Anesthesia Plan: Detailed anesthesia approach including induction, maintenance, and emergence
-2. Risk Assessment: Analysis of patient-specific risks and complications
-3. Monitoring Plan: Required monitoring during the procedure
-4. Medication Plan: Specific medications and dosages
-
-Be specific, evidence-based, and consider the patient's comorbidities and procedure requirements."""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context}
-        ]
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=1500
-        )
-        
-        ai_response = response.choices[0].message.content
-        
-        # Parse the response into structured recommendations
-        recommendations = {
-            "anesthesia_plan": ai_response,
-            "risk_assessment": "",
-            "monitoring_plan": "",
-            "medication_plan": "",
-            "sources": [],
-            "confidence_score": 0.8
-        }
-        
-        return recommendations
-        
-    except Exception as e:
-        print(f"Error generating AI recommendations: {e}")
-        return {
-            "anesthesia_plan": "Error generating recommendations",
-            "risk_assessment": "",
-            "monitoring_plan": "",
-            "medication_plan": "",
-            "sources": [],
-            "confidence_score": 0.0
-        }
-
 @app.post("/chat-test", response_model=ChatOut)
 def chat_test(payload: ChatIn, db: Session = Depends(get_db)):
     """Test chat endpoint without authentication"""
@@ -1727,8 +1678,8 @@ async def upload_file(
     file_id = str(uuid4())
     s3_key = f"uploads/{current_user['user_id']}/{file_id}_{file.filename}"
     
-    # Upload to S3 (if configured)
-    s3_url = None
+    # Store file path (S3 if configured, otherwise None for text-only storage)
+    file_path = None
     if s3_client:
         try:
             s3_client.put_object(
@@ -1737,15 +1688,22 @@ async def upload_file(
                 Body=file_content,
                 ContentType=file.content_type or "application/octet-stream"
             )
-            s3_url = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+            file_path = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+            print(f"File uploaded to S3: {file_path}")
         except Exception as e:
             print(f"S3 upload failed: {e}")
-            # Continue without S3 storage for now
+            file_path = None
+    else:
+        print("S3 not configured - storing text content only (no file download available)")
+        file_path = None
     
     # Extract text from file
     try:
         extracted_text = extract_text_from_file(file_content, file_extension)
+        print(f"Extracted text length: {len(extracted_text)} characters")
+        print(f"First 200 chars: {extracted_text[:200]}")
     except Exception as e:
+        print(f"Text extraction error: {e}")
         raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
     
     # Create material record in database
@@ -1753,7 +1711,7 @@ async def upload_file(
         user_id=current_user['user_id'],
         title=file.filename,
         file_type=file_extension,
-        file_path=s3_url,
+        file_path=file_path,
         file_size=len(file_content),
         status="processing",
         processing_progress=0
@@ -1815,7 +1773,7 @@ async def upload_file(
             "file_type": file_extension,
             "chunks_created": len(chunks),
             "text_length": len(extracted_text),
-            "s3_url": s3_url,
+            "file_path": file_path,
             "message": f"File processed successfully. Created {len(chunks)} chunks for RAG."
         }
         
@@ -1843,10 +1801,18 @@ def get_user_materials(
                 "id": material.id,
                 "title": material.title,
                 "file_type": material.file_type,
+                "file_path": material.file_path,
+                "file_size": material.file_size,
                 "status": material.status,
                 "processing_progress": material.processing_progress,
+                "processing_error": material.processing_error,
+                "extracted_text": material.extracted_text,
+                "chunk_count": material.chunk_count,
+                "total_tokens": material.total_tokens,
+                "embedding_model": material.embedding_model,
                 "uploaded_at": material.uploaded_at.isoformat(),
-                "processed_at": material.processed_at.isoformat() if material.processed_at else None
+                "processed_at": material.processed_at.isoformat() if material.processed_at else None,
+                "last_accessed": material.last_accessed.isoformat() if material.last_accessed else None
             }
             for material in materials
         ]
