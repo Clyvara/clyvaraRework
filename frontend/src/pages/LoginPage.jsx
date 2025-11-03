@@ -3,89 +3,110 @@ import styled from "styled-components";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabaseClient";
 import GoogleSignInButton from "../components/GoogleSignInButton";
-import clyvaranewlogo from "../assets/clyvaranewlogo.svg";
+import Brainie from "../assets/brainie.png";
 import { Eye, EyeOff } from "lucide-react";
 
 const Page = styled.div`
   min-height: 100vh;
   display: grid;
-  place-items: center;
+  grid-template-columns: 1fr 1fr;
   background: #ADCAF0;
-  padding: 2rem 1rem;
+  font-family: 'General Sans', sans-serif;
   color: #20359A;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
-const Card = styled.div`
-  width: 100%;
-  max-width: 420px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(6px);
-  border-radius: 16px;
-  padding: 1.5rem;
-  display: grid;
-  gap: 1rem;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+const LeftSide = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  background: #ADCAF0;
 `;
 
 const LogoGroup = styled.div`
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   gap: 1rem;
-  margin-top: 0.5rem;
-  margin-bottom: 10px;
+  text-align: center;
 `;
 
 const Logo = styled.img`
-  width: 20%;
-  height: auto;
+  width: 120px;
+  height: 120px;
   object-fit: contain;
 `;
 
 const Clyvara = styled.h1`
-  font-size: 60px;
+  font-size: 4rem;
   font-weight: 700;
   margin: 0;
-  color: #E7A0CC;
-  font-family: 'Rethink Sans';
+  color: #20359A;
+  font-family: 'Rethink Sans', sans-serif;
+`;
+
+const RightSide = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  background: #ADCAF0;
+`;
+
+const LoginContainer = styled.div`
+  width: 100%;
+  max-width: 400px;
+  display: grid;
+  gap: 2rem;
 `;
 
 const Title = styled.h1`
-  margin: 20px 0 0rem;
-  text-align: center;
-  font-size: 24px;
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #20359A;
+  font-family: 'General Sans', sans-serif;
+`;
+
+const Subtitle = styled.p`
+  margin: 0;
+  font-size: 1rem;
+  color: #20359A;
+  font-weight: 500;
+  font-family: 'General Sans', sans-serif;
 `;
 
 const Form = styled.form`
   display: grid;
-  gap: 0.9rem;
-`;
-
-const Field = styled.label`
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.95rem;
-  margin-bottom: 10px;
-  font-weight: 600;
+  gap: 1.5rem;
 `;
 
 const Input = styled.input`
   width: 100%;
   box-sizing: border-box;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #cfcfcf;
-  border-radius: 10px;
-  background: #fff;
+  padding: 1rem 1.25rem;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  background: white;
   font-size: 1rem;
-  color: #111827;
+  color: #20359A;
+  font-family: 'General Sans', sans-serif;
+  font-weight: 500;
 
-  &::placeholder { color: #9ca3af; }
+  &::placeholder {
+    color: #9CA3AF;
+    font-weight: 500;
+  }
 
   &:focus {
     outline: none;
-    border-color: #111827;
-    box-shadow: 0 0 0 3px rgba(17,24,39,0.12);
-    color: #111827;
+    border-color: #20359A;
   }
 `;
 
@@ -95,97 +116,111 @@ const PasswordWrapper = styled.div`
 `;
 
 const PasswordInput = styled(Input)`
-  padding-right: 2.5rem;
+  padding-right: 3rem;
 `;
 
 const EyeButton = styled.button`
   position: absolute;
-  right: 0.6rem;
+  right: 1rem;
   top: 50%;
   transform: translateY(-50%);
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: #6B7280;
   padding: 0.25rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
 
-  &:hover { color: #111827; }
+  &:hover {
+    color: #20359A;
+  }
 `;
 
 const Button = styled.button`
+  background-color: white;
+  color: black;
   padding: 12.8px 15.2px;
-  border: 0;
-  border-radius: 999px;
-  background: #111827;
-  color: #fff;
-  font-weight: 700;
+  border: 1px solid black;
+  border-radius: 40px;
   cursor: pointer;
-  transition: opacity 0.15s ease, transform 0.06s ease;
-  &:hover { opacity: 0.95; }
-  &:active { transform: translateY(1px); }
-  &:disabled { opacity: 0.6; cursor: not-allowed; }
+  font-weight: 500;
+  font-family: 'General Sans', sans-serif;
+  transition: background 0.2s ease;
+  height: 48px;
+
+  &:hover {
+    background: #1A2B7A;
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 `;
 
-const OrLine = styled.div`
+const SocialButtonsContainer = styled.div`
+  display: grid;
+  gap: 1rem;
+`;
+
+const Divider = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
+  text-align: center;
+  margin: 1rem 0;
   color: #20359A;
   font-weight: 600;
-  font-size: 20px;
-  margin-top: 10px;
-`;
+  font-family: 'General Sans', sans-serif;
 
-const SignUpButton = styled(Link)`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: 5px;
-  width: 100%;
-  padding: 12.8px 0;
-  border-radius: 999px;
-  border: 2px solid #111827;
-  background: transparent;
-  color: #111827;
-  font-weight: 700;
-  text-decoration: none;
-  font-size: 1rem;
-  transition: background 0.15s ease, transform 0.06s ease;
-
-  &:hover {
-    background: rgba(0,0,0,0.08);
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #E5E7EB;
   }
-  &:active {
-    transform: translateY(1px);
+
+  &::before {
+    margin-right: 1rem;
+  }
+
+  &::after {
+    margin-left: 1rem;
   }
 `;
 
-const BottomRow = styled.div`
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
+const AccountText = styled.p`
+  margin: 0;
+  text-align: center;
+  color: #20359A;
+  font-weight: 500;
+  font-family: 'General Sans', sans-serif;
 `;
 
-const BackLink = styled(Link)`
-  color: #0b1c3f;
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 0.95rem;
+const SignUpLink = styled(Link)`
+  color: #20359A;
+  font-weight: 600;
+  text-decoration: underline;
+  margin-left: 0.25rem;
 
   &:hover {
-    text-decoration: underline;
+    opacity: 0.8;
   }
 `;
 
 const Message = styled.p`
-  margin: 0.25rem 0 0;
+  margin: 0;
+  padding: 0.75rem 1rem;
   font-size: 0.95rem;
-  color: ${(p) => (p.$error ? "#b00020" : "#0b1c3f")};
-  font-weight: ${(p) => (p.$error ? 700 : 600)};
+  border-radius: 8px;
   text-align: center;
+  font-weight: 500;
+  font-family: 'General Sans', sans-serif;
+  color: ${(p) => (p.$error ? "#DC2626" : "#20359A")};
+  background: ${(p) => (p.$error ? "#FEF2F2" : "#F0F4FF")};
+  border: 1px solid ${(p) => (p.$error ? "#FECACA" : "#DBEAFE")};
 `;
 
 export default function Login() {
@@ -216,33 +251,34 @@ export default function Login() {
 
   return (
     <Page>
-      <Card>
+      <LeftSide>
         <LogoGroup>
-          <Logo src={clyvaranewlogo} alt="Clyvara logo" />
+          <Logo src={Brainie} alt="Brainie" />
           <Clyvara>Clyvara</Clyvara>
         </LogoGroup>
+      </LeftSide>
 
-        <Title>Log In</Title>
+      <RightSide>
+        <LoginContainer>
+          <div>
+            <Title>Welcome back!</Title>
+            <Subtitle>Log in to your account</Subtitle>
+          </div>
 
-        <Form onSubmit={onSubmit}>
-          <Field htmlFor="email">
-            Email
+          <Form onSubmit={onSubmit}>
             <Input
-              id="email"
               type="email"
+              placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
             />
-          </Field>
 
-          <Field htmlFor="password">
-            Password
             <PasswordWrapper>
               <PasswordInput
-                id="password"
                 type={showPass ? "text" : "password"}
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPass(e.target.value)}
                 autoComplete="current-password"
@@ -255,26 +291,27 @@ export default function Login() {
                 aria-label={showPass ? "Hide password" : "Show password"}
                 aria-pressed={showPass}
               >
-                {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
               </EyeButton>
             </PasswordWrapper>
-          </Field>
 
-          <Button type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Log In"}
-          </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Signing in…" : "Log In"}
+            </Button>
 
-          <GoogleSignInButton />
-          <OrLine>OR</OrLine>
-          <SignUpButton to="/signup">Sign Up</SignUpButton>
-        </Form>
+            <SocialButtonsContainer>
+              <GoogleSignInButton />
+            </SocialButtonsContainer>
 
-        {msg && <Message $error={isError}>{msg}</Message>}
+            <AccountText>
+              Don't have an account?
+              <SignUpLink to="/signup">Sign Up</SignUpLink>
+            </AccountText>
+          </Form>
 
-        <BottomRow>
-          <BackLink to="/">← Back</BackLink>
-        </BottomRow>
-      </Card>
+          {msg && <Message $error={isError}>{msg}</Message>}
+        </LoginContainer>
+      </RightSide>
     </Page>
   );
 }
