@@ -37,8 +37,8 @@ const LogoGroup = styled.div`
 `;
 
 const Logo = styled.img`
-  width: 120px;
-  height: 120px;
+  width: 200px;
+  height: 200px;
   object-fit: contain;
 `;
 
@@ -46,7 +46,7 @@ const Clyvara = styled.h1`
   font-size: 4rem;
   font-weight: 700;
   margin: 0;
-  color: #20359A;
+  color: var(--times-square-pink);
   font-family: 'Rethink Sans', sans-serif;
 `;
 
@@ -69,16 +69,18 @@ const LoginContainer = styled.div`
 const Title = styled.h1`
   margin: 0;
   font-size: 2rem;
-  font-weight: 600;
-  color: #20359A;
+  font-weight: 500;
+  color: black;
+  text-align: center;
   font-family: 'General Sans', sans-serif;
 `;
 
 const Subtitle = styled.p`
   margin: 0;
-  font-size: 1rem;
-  color: #20359A;
+  font-size: 1.5rem;
+  color: black;
   font-weight: 500;
+  text-align: center;
   font-family: 'General Sans', sans-serif;
 `;
 
@@ -194,7 +196,7 @@ const Divider = styled.div`
 const AccountText = styled.p`
   margin: 0;
   text-align: center;
-  color: #20359A;
+  color: black;
   font-weight: 500;
   font-family: 'General Sans', sans-serif;
 `;
@@ -262,7 +264,7 @@ export default function Login() {
         <LoginContainer>
           <div>
             <Title>Welcome back!</Title>
-            <Subtitle>Log in to your account</Subtitle>
+            <Subtitle>Log in to your account.</Subtitle>
           </div>
 
           <Form onSubmit={onSubmit}>
