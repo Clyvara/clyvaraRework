@@ -225,11 +225,45 @@ const Message = styled.p`
   border: 1px solid ${(p) => (p.$error ? "#FECACA" : "#DBEAFE")};
 `;
 
+// adding specialty for users in signup phase
+
+const FieldGroup = styled.div`
+  display: grid;
+  gap: 0.35rem;
+`;
+
+const Label = styled.label`
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+`;
+
+const Select = styled.select`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.85rem 1.25rem;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.95rem;
+  color: ${props => (props.value === "" ? "#888" : "black")};
+
+  font-family: 'General Sans', sans-serif;
+  font-weight: 500;
+
+  &:focus {
+    outline: none;
+    border-color: #20359A;
+  }
+`;
+
+
 export default function SignupPage() {
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [specialty, setSpecialty] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [isError, setIsError] = useState(false);
@@ -240,7 +274,7 @@ export default function SignupPage() {
     setMsg("");
     setIsError(false);
 
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signUp({ email, password, options: {data: {specialty}} });
 
     setLoading(false);
     if (error) {
@@ -297,6 +331,18 @@ export default function SignupPage() {
                 {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
               </EyeButton>
             </PasswordWrapper>
+
+
+            <FieldGroup>
+              <Select id="specialty" value={specialty} onChange={(e) => setSpecialty(e.target.value)} required>
+                <option value="" disabled>Specialty</option>
+                <option value="" disabled hidden> Specialty </option>
+                <option value="RN">Nursing (RN)</option>
+                <option value="CRNA">Certified Registered Nurse Anesthetist (CRNA)</option>
+                <option value="CNM">Nurse Midwife (CNM)</option>
+                <option value="other">Other</option>
+              </Select>
+            </FieldGroup>
 
             <Button type="submit" disabled={loading}>
               {loading ? "Creating account…" : "Create Account"}
