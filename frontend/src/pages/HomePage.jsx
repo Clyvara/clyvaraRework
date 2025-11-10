@@ -29,21 +29,21 @@ const Container = styled.main`
 
 
 const DashboardButton = styled.button`
-  background: #20359A;
-  color: white;
-  padding: 12px 24px;
+  background: #20359a;
+  color: #ffffff;
+  padding: 10px 22px;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: background 0.2s ease;
-  margin: 20px auto;
-  display: block;
-  
+  transition: all 0.2s ease;
+
   &:hover {
     background: #1a2a7a;
+    transform: translateY(-1px);
   }
+
 `;
 
 const WelcomeMessage = styled.div`
@@ -68,29 +68,7 @@ export default function HomePage() {
     );
   }
 
-  // If user is logged in, show welcome message with dashboard access
-  if (user) {
-    return (
-      <div>
-        <Header />
-        <WelcomeMessage>
-          <h2>Welcome back, {user.email}!</h2>
-          <p>Ready to continue your learning journey?</p>
-          <DashboardButton onClick={() => navigate('/dashboard')}>
-            Go to Dashboard
-          </DashboardButton>
-        </WelcomeMessage>
-        <Container>
-          <LeftHomePage/>
-          <Branie/>
-        </Container>
-        <Testimonials/>
-        <Footer />
-      </div>
-    );
-  }
-
-  // Default homepage for non-authenticated users
+  // I like having just one landing page and having the dashboard get the welcome message
   return (
     <div>
       <Header />

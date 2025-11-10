@@ -46,7 +46,7 @@ const Clyvara = styled.h1`
   font-size: 4rem;
   font-weight: 700;
   margin: 0;
-  color: #E7A0CC;
+  color: #E84797;
   font-family: 'Rethink Sans', sans-serif;
 `;
 
