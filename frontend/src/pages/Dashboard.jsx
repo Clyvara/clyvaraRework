@@ -3,6 +3,37 @@ import styled from "styled-components";
 import ChatBot from "../components/ChatBot.jsx";
 import { supabase } from "../utils/supabaseClient";
 
+const WelcomeMessage = styled.div`
+  text-align: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #20359A, #4A90E2);
+  color: white;
+  margin: 16px 0;
+  border-radius: 12px;
+   h2, p {
+    font-size: 20px;
+    font-family: 'Rethink Sans';
+  }
+`;
+
+const DashboardButton = styled.button`
+  background: #20359A;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  margin: 20px auto;
+  display: block;
+  
+  &:hover {
+    background: #1a2a7a;
+  }
+`;
+
 const Header = styled.header`
   display: flex;
   justify-content: space-between;
@@ -234,6 +265,15 @@ export default function Dashboard() {
   const [showExpandedView, setShowExpandedView] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
+  const [userEmail, setUserEmail] = useState(null);
+
+  useEffect(() => {
+  const fetchUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    setUserEmail(data?.user?.email ?? null);
+  };
+  fetchUser();
+}, []);
 
   useEffect(() => {
     loadMaterials();
@@ -404,13 +444,16 @@ export default function Dashboard() {
         </div>
       </Header>
 
+      {userEmail && (
+      <WelcomeMessage>
+        <h2>Welcome back, {userEmail}!</h2>
+      </WelcomeMessage>
+    )}
+
       {!materials || materials.length === 0 ? (
         <EmptyState>
           <h3>No materials yet</h3>
           <p>Upload your first study material to get started</p>
-          <StartButton onClick={handleUploadClick}>
-            Upload Material
-          </StartButton>
         </EmptyState>
       ) : (
         <section>
