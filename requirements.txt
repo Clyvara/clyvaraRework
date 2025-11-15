@@ -30,5 +30,6 @@ websockets==15.0.1
 openai==1.54.4
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.36
+boto3==1.35.0
 
 
