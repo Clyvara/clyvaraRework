@@ -14,3 +14,7 @@ AWS_ACCESS_KEY_ID=your_aws_access_key_id
 AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
 AWS_REGION=us-east-2
 S3_BUCKET_NAME=clyvara-uploads
+
+# Admin API Key (Optional - for securing system material uploads)
+# Generate a random secret key. If not set, upload endpoint will be open (not recommended for production)
+ADMIN_API_KEY=your_random_secret_key_here

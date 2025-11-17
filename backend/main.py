@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Body
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -14,16 +14,22 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import jwt
-from fastapi import Header
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile
+from material_cache import (
+    get_cached_text, cache_text, invalidate_cache, preload_system_materials, get_cache_stats,
+    get_cached_vector_entries, cache_vector_entries, invalidate_vector_cache
+)
 
 load_dotenv()
 
 # Supabase JWT secret for token verification
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+# System materials user ID - materials with this user_id are accessible to all users
+SYSTEM_USER_ID = "SYSTEM"
 
 def get_current_user(authorization: str = Header(None)):
     """Extract user info from Supabase JWT token"""
@@ -81,6 +87,20 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Preload system materials into cache on startup"""
+    try:
+        from database import get_session_local
+        db = get_session_local()()
+        try:
+            preload_system_materials(db, SYSTEM_USER_ID)
+            print("Material cache initialized")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Warning: Could not preload system materials: {e}")
+
 # File processing functions
 def extract_text_from_pdf(file_content: bytes) -> str:
     """Extract text from PDF file"""
@@ -127,7 +147,25 @@ def generate_embeddings(text: str) -> List[float]:
         )
         return response.data[0].embedding
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
+        error_msg = str(e)
+        # Provide more specific error messages for common issues
+        if "401" in error_msg or "invalid_api_key" in error_msg.lower():
+            raise HTTPException(
+                status_code=500, 
+                detail="Error generating embeddings: Invalid OpenAI API key. Please check your OPENAI_API_KEY in the .env file."
+            )
+        elif "403" in error_msg or "forbidden" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Error generating embeddings: API key access denied (403). This may be due to insufficient quota, expired key, or restricted permissions. Please check your OpenAI account."
+            )
+        elif "429" in error_msg or "rate limit" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Error generating embeddings: Rate limit exceeded. Please wait a moment and try again."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Error generating embeddings: {error_msg}")
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
     """Split text into overlapping chunks for better retrieval"""
@@ -152,6 +190,21 @@ def health_check():
         "database": "connected" if test_connection() else "disconnected"
     }
 
+@app.get("/api/cache/stats")
+def get_cache_stats_endpoint():
+    """Get material cache statistics"""
+    try:
+        stats = get_cache_stats()
+        return {
+            "success": True,
+            "cache_stats": stats
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.get("/api/tables")
 def list_tables(db: Session = Depends(get_db)):
     """List all tables in the database"""
@@ -167,6 +220,33 @@ def list_tables(db: Session = Depends(get_db)):
         return {"tables": tables, "count": len(tables)}
     except Exception as e:
         return {"error": f"Database error: {str(e)}"}
+
+@app.post("/api/ensure-tables")
+def ensure_tables():
+    """Ensure all tables exist, create if they don't"""
+    try:
+        from database import init_db, get_engine
+        from sqlalchemy import inspect
+        # Use init_db to create schemas and tables
+        success = init_db()
+        if success:
+            # Verify profiles table exists
+            engine = get_engine()
+            inspector = inspect(engine)
+            tables_in_main = inspector.get_table_names(schema='main')
+            profiles_exists = 'profiles' in tables_in_main
+            
+            return {
+                "success": True, 
+                "message": "All tables ensured/created successfully",
+                "profiles_table_exists": profiles_exists,
+                "tables_in_main_schema": tables_in_main
+            }
+        else:
+            return {"success": False, "message": "Failed to create tables"}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
 
 @app.post("/api/test-auth")
 def test_authentication_flow(
@@ -1069,9 +1149,12 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
         query_text = f"{care_plan.diagnosis} {care_plan.procedure} anesthesia care plan"
         query_embedding = generate_embeddings(query_text)
         
-        # Get relevant vector entries
+        # Get relevant vector entries (user's materials AND system materials)
         vector_entries = db.query(VectorIndexEntry).filter(
-            VectorIndexEntry.user_id == care_plan.user_id
+            or_(
+                VectorIndexEntry.user_id == care_plan.user_id,
+                VectorIndexEntry.user_id == SYSTEM_USER_ID
+            )
         ).all()
         
         # Calculate similarity and get top results
@@ -1081,7 +1164,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             results.append({
                 "content": entry.content,
                 "similarity": similarity,
-                "metadata": entry.vector_metadata
+                "metadata": entry.vector_metadata,
+                "is_system": entry.user_id == SYSTEM_USER_ID
             })
         
         # Sort by similarity and get top 5 most relevant chunks
@@ -1094,7 +1178,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             context_parts.append("\nRelevant Medical Literature:")
             for i, result in enumerate(top_results, 1):
                 source_name = result["metadata"].get("file_name", "Unknown Source")
-                context_parts.append(f"\n{i}. From {source_name}:\n{result['content'][:300]}...")
+                source_label = "System Textbook" if result.get("is_system") else "User Material"
+                context_parts.append(f"\n{i}. From {source_name} ({source_label}):\n{result['content'][:300]}...")
         
         return "\n".join(context_parts)
         
@@ -1567,9 +1652,12 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
         query_text = f"{care_plan.diagnosis} {care_plan.procedure} anesthesia care plan"
         query_embedding = generate_embeddings(query_text)
         
-        # Get relevant vector entries
+        # Get relevant vector entries (user's materials AND system materials)
         vector_entries = db.query(VectorIndexEntry).filter(
-            VectorIndexEntry.user_id == care_plan.user_id
+            or_(
+                VectorIndexEntry.user_id == care_plan.user_id,
+                VectorIndexEntry.user_id == SYSTEM_USER_ID
+            )
         ).all()
         
         # Calculate similarity and get top results
@@ -1579,7 +1667,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             results.append({
                 "content": entry.content,
                 "similarity": similarity,
-                "metadata": entry.vector_metadata
+                "metadata": entry.vector_metadata,
+                "is_system": entry.user_id == SYSTEM_USER_ID
             })
         
         # Sort by similarity and get top 5 most relevant chunks
@@ -1592,7 +1681,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             context_parts.append("\nRelevant Medical Literature:")
             for i, result in enumerate(top_results, 1):
                 source_name = result["metadata"].get("file_name", "Unknown Source")
-                context_parts.append(f"\n{i}. From {source_name}:\n{result['content'][:300]}...")
+                source_label = "System Textbook" if result.get("is_system") else "User Material"
+                context_parts.append(f"\n{i}. From {source_name} ({source_label}):\n{result['content'][:300]}...")
         
         return "\n".join(context_parts)
         
@@ -1752,7 +1842,13 @@ async def upload_file(
                 db.add(vector_entry)
                 
             except Exception as e:
-                print(f"Error creating embedding for chunk {i}: {e}")
+                error_msg = str(e)
+                print(f"Error creating embedding for chunk {i}: {error_msg}")
+                # Log specific error types for debugging
+                if "403" in error_msg:
+                    print(f"⚠️  OpenAI API 403 error for chunk {i}. This chunk will be skipped. Check your API key permissions/quota.")
+                elif "401" in error_msg:
+                    print(f"⚠️  OpenAI API 401 error for chunk {i}. Invalid API key. Please check your OPENAI_API_KEY.")
                 continue
         
         db.commit()
@@ -1765,6 +1861,9 @@ async def upload_file(
         material.extracted_text = extracted_text
         material.processed_at = func.now()
         db.commit()
+        
+        # Cache the extracted text
+        cache_text(material.id, extracted_text)
         
         return {
             "success": True,
@@ -1784,6 +1883,208 @@ async def upload_file(
         db.commit()
         raise HTTPException(status_code=500, detail=f"Error processing file for RAG: {str(e)}")
 
+@app.post("/api/admin/upload-system-material")
+async def upload_system_material(
+    file: UploadFile = File(...),
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
+    db: Session = Depends(get_db)
+):
+    """Admin endpoint to upload system materials accessible to all users"""
+    
+    # Optional: Check admin key (set ADMIN_API_KEY in environment)
+    admin_api_key = os.getenv("ADMIN_API_KEY")
+    if admin_api_key:
+        if not x_admin_key or x_admin_key != admin_api_key:
+            raise HTTPException(status_code=403, detail="Invalid admin key")
+    
+    # Validate file type
+    allowed_types = ["pdf", "docx", "doc", "txt"]
+    file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ""
+    
+    if file_extension not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_types)}"
+        )
+    
+    # Read file content
+    try:
+        file_content = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+    
+    # Generate unique file path
+    file_id = str(uuid4())
+    s3_key = f"system-materials/{file_id}_{file.filename}"
+    
+    # Store file path (S3 if configured, otherwise None for text-only storage)
+    file_path = None
+    if s3_client:
+        try:
+            s3_client.put_object(
+                Bucket=S3_BUCKET_NAME,
+                Key=s3_key,
+                Body=file_content,
+                ContentType=file.content_type or "application/octet-stream"
+            )
+            file_path = f"s3://{S3_BUCKET_NAME}/{s3_key}"
+            print(f"System material uploaded to S3: {file_path}")
+        except Exception as e:
+            print(f"S3 upload failed: {e}")
+            file_path = None
+    else:
+        print("S3 not configured - storing text content only (no file download available)")
+        file_path = None
+    
+    # Extract text from file
+    try:
+        extracted_text = extract_text_from_file(file_content, file_extension)
+        print(f"Extracted text length: {len(extracted_text)} characters")
+    except Exception as e:
+        print(f"Text extraction error: {e}")
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
+    
+    # Check if material with same title already exists (prevent duplicates)
+    existing_material = db.query(Material).filter(
+        Material.user_id == SYSTEM_USER_ID,
+        Material.title == file.filename,
+        Material.status == "processed"
+    ).first()
+    
+    if existing_material:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"System material with title '{file.filename}' already exists"
+        )
+    
+    # Create material record in database with SYSTEM_USER_ID
+    material = Material(
+        user_id=SYSTEM_USER_ID,  # System materials accessible to all users
+        title=file.filename,
+        file_type=file_extension,
+        file_path=file_path,
+        file_size=len(file_content),
+        status="processing",
+        processing_progress=0
+    )
+    
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+    
+    # Process text for RAG (chunk and create embeddings) - run in background
+    # Return immediately to avoid timeout for large files
+    import threading
+    
+    def process_material_background():
+        """Process material in background to avoid timeout"""
+        # Get a new database session for background processing
+        from database import get_session_local
+        background_db = get_session_local()()
+        
+        try:
+            # Reload material in background session
+            bg_material = background_db.query(Material).filter(Material.id == material.id).first()
+            if not bg_material:
+                print(f"Material {material.id} not found in background processing")
+                return
+            
+            chunks = chunk_text(extracted_text)
+            total_chunks = len(chunks)
+            
+            # Create vector index entries for each chunk
+            successful_chunks = 0
+            for i, chunk in enumerate(chunks):
+                try:
+                    # Update progress
+                    bg_material.processing_progress = int((i / total_chunks) * 100)
+                    background_db.commit()
+                    
+                    embedding = generate_embeddings(chunk)
+                    
+                    vector_entry = VectorIndexEntry(
+                        user_id=SYSTEM_USER_ID,  # System materials accessible to all users
+                        content_hash=f"{file_id}_{i}",
+                        embedding=embedding,
+                        content=chunk,
+                        token_count=len(chunk.split()),  # Approximate token count
+                        chunk_index=i,
+                        source_type="material",
+                        source_id=bg_material.id,
+                        embedding_model="text-embedding-3-small",
+                        vector_metadata={
+                            "file_name": file.filename,
+                            "chunk_index": i,
+                            "total_chunks": total_chunks,
+                            "file_type": file_extension,
+                            "file_size": len(file_content),
+                            "is_system": True
+                        }
+                    )
+                    
+                    background_db.add(vector_entry)
+                    successful_chunks += 1
+                    
+                    # Commit every 10 chunks to avoid long transactions
+                    if (i + 1) % 10 == 0:
+                        background_db.commit()
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"Error creating embedding for chunk {i}: {error_msg}")
+                    # Log specific error types for debugging
+                    if "403" in error_msg:
+                        print(f"⚠️  OpenAI API 403 error for chunk {i}. This chunk will be skipped. Check your API key permissions/quota.")
+                    elif "401" in error_msg:
+                        print(f"⚠️  OpenAI API 401 error for chunk {i}. Invalid API key. Please check your OPENAI_API_KEY.")
+                    continue
+            
+            background_db.commit()
+            
+            # Update material status
+            bg_material.status = "processed"
+            bg_material.processing_progress = 100
+            bg_material.chunk_count = successful_chunks
+            bg_material.total_tokens = sum(len(chunk.split()) for chunk in chunks)
+            bg_material.extracted_text = extracted_text
+            bg_material.processed_at = func.now()
+            background_db.commit()
+            
+            # Cache the extracted text
+            cache_text(bg_material.id, extracted_text)
+            
+            print(f"✓ Successfully processed system material: {file.filename} ({successful_chunks} chunks)")
+            
+        except Exception as e:
+            # Update material status to failed
+            try:
+                bg_material = background_db.query(Material).filter(Material.id == material.id).first()
+                if bg_material:
+                    bg_material.status = "failed"
+                    bg_material.processing_error = str(e)
+                    background_db.commit()
+            except:
+                pass
+            print(f"✗ Error processing system material {file.filename}: {str(e)}")
+        finally:
+            background_db.close()
+    
+    # Start background processing in a separate thread (fire and forget)
+    thread = threading.Thread(target=process_material_background, daemon=True)
+    thread.start()
+    
+    # Return immediately with processing status
+    return {
+        "success": True,
+        "material_id": material.id,
+        "file_name": file.filename,
+        "file_type": file_extension,
+        "file_size": len(file_content),
+        "file_path": file_path,
+        "status": "processing",
+        "message": f"System material uploaded successfully. Processing in background. Check status later."
+    }
+
 @app.get("/api/materials")
 def get_user_materials(
     current_user: dict = Depends(get_current_user),
@@ -1795,27 +2096,38 @@ def get_user_materials(
         Material.user_id == current_user['user_id']
     ).order_by(Material.uploaded_at.desc()).all()
     
+    result_materials = []
+    for material in materials:
+        # Try to get from cache first
+        cached_text = get_cached_text(material.id)
+        
+        # If not in cache, use database value and cache it
+        extracted_text = cached_text if cached_text is not None else material.extracted_text
+        
+        # Cache the text if it wasn't cached and exists
+        if cached_text is None and extracted_text:
+            cache_text(material.id, extracted_text)
+        
+        result_materials.append({
+            "id": material.id,
+            "title": material.title,
+            "file_type": material.file_type,
+            "file_path": material.file_path,
+            "file_size": material.file_size,
+            "status": material.status,
+            "processing_progress": material.processing_progress,
+            "processing_error": material.processing_error,
+            "extracted_text": extracted_text,
+            "chunk_count": material.chunk_count,
+            "total_tokens": material.total_tokens,
+            "embedding_model": material.embedding_model,
+            "uploaded_at": material.uploaded_at.isoformat(),
+            "processed_at": material.processed_at.isoformat() if material.processed_at else None,
+            "last_accessed": material.last_accessed.isoformat() if material.last_accessed else None
+        })
+    
     return {
-        "materials": [
-            {
-                "id": material.id,
-                "title": material.title,
-                "file_type": material.file_type,
-                "file_path": material.file_path,
-                "file_size": material.file_size,
-                "status": material.status,
-                "processing_progress": material.processing_progress,
-                "processing_error": material.processing_error,
-                "extracted_text": material.extracted_text,
-                "chunk_count": material.chunk_count,
-                "total_tokens": material.total_tokens,
-                "embedding_model": material.embedding_model,
-                "uploaded_at": material.uploaded_at.isoformat(),
-                "processed_at": material.processed_at.isoformat() if material.processed_at else None,
-                "last_accessed": material.last_accessed.isoformat() if material.last_accessed else None
-            }
-            for material in materials
-        ]
+        "materials": result_materials
     }
 
 @app.delete("/api/materials/{material_id}")
@@ -1834,6 +2146,10 @@ def delete_material(
     
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
+    
+    # Invalidate caches before deleting
+    invalidate_cache(material_id)
+    invalidate_vector_cache(material_id)
     
     # Delete associated vector entries
     vector_entries = db.query(VectorIndexEntry).filter(
@@ -1857,7 +2173,7 @@ def search_materials(
     db: Session = Depends(get_db),
     limit: int = 5
 ):
-    """Search through user's materials using vector similarity"""
+    """Search through user's materials and system materials using vector similarity"""
     
     if not client:
         raise HTTPException(status_code=503, detail="OpenAI client not configured")
@@ -1866,9 +2182,12 @@ def search_materials(
         # Generate embedding for the query
         query_embedding = generate_embeddings(query)
         
-        # Get user's materials
+        # Get user's materials AND system materials (accessible to all users)
         user_materials = db.query(Material).filter(
-            Material.user_id == current_user['user_id'],
+            or_(
+                Material.user_id == current_user['user_id'],
+                Material.user_id == SYSTEM_USER_ID
+            ),
             Material.status == "processed"
         ).all()
         
@@ -1877,10 +2196,14 @@ def search_materials(
         if not material_ids:
             return {"results": [], "message": "No processed materials found"}
         
-        # Get vector entries for user's materials
+        # Get vector entries for user's materials and system materials
         vector_entries = db.query(VectorIndexEntry).filter(
             VectorIndexEntry.source_id.in_(material_ids),
-            VectorIndexEntry.source_type == "material"
+            VectorIndexEntry.source_type == "material",
+            or_(
+                VectorIndexEntry.user_id == current_user['user_id'],
+                VectorIndexEntry.user_id == SYSTEM_USER_ID
+            )
         ).all()
         
         # Calculate similarity scores (simplified cosine similarity)
@@ -1892,7 +2215,8 @@ def search_materials(
                 "content": entry.content,
                 "similarity": similarity,
                 "metadata": entry.vector_metadata,
-                "source_id": entry.source_id
+                "source_id": entry.source_id,
+                "is_system": entry.user_id == SYSTEM_USER_ID
             })
         
         # Sort by similarity and return top results
@@ -1916,26 +2240,32 @@ def chat_with_rag(payload: ChatIn, current_user: dict = Depends(get_current_user
     # Create or reuse a thread
     thread_id = payload.thread_id or str(uuid4())
     
-    # RAG: Search user's materials for relevant context
+    # RAG: Search user's materials AND system materials for relevant context
     relevant_context = ""
     try:
         # Generate embedding for the user's question
         query_embedding = generate_embeddings(payload.message)
         
-        # Get user's processed materials
+        # Get user's processed materials AND system materials (accessible to all users)
         user_materials = db.query(Material).filter(
-            Material.user_id == current_user['user_id'],
+            or_(
+                Material.user_id == current_user['user_id'],
+                Material.user_id == SYSTEM_USER_ID
+            ),
             Material.status == "processed"
         ).all()
         
         if user_materials:
             material_ids = [m.id for m in user_materials]
             
-            # Get vector entries for user's materials
+            # Get vector entries for user's materials and system materials
             vector_entries = db.query(VectorIndexEntry).filter(
                 VectorIndexEntry.source_id.in_(material_ids),
                 VectorIndexEntry.source_type == "material",
-                VectorIndexEntry.user_id == current_user['user_id']
+                or_(
+                    VectorIndexEntry.user_id == current_user['user_id'],
+                    VectorIndexEntry.user_id == SYSTEM_USER_ID
+                )
             ).all()
             
             # Calculate similarity scores and get top results
@@ -1945,29 +2275,37 @@ def chat_with_rag(payload: ChatIn, current_user: dict = Depends(get_current_user
                 results.append({
                     "content": entry.content,
                     "similarity": similarity,
-                    "metadata": entry.vector_metadata
+                    "metadata": entry.vector_metadata,
+                    "is_system": entry.user_id == SYSTEM_USER_ID
                 })
             
-            # Sort by similarity and get top 3 most relevant chunks
+            # Sort by similarity and get top 5 most relevant chunks (increased from 3 to include system materials)
             results.sort(key=lambda x: x["similarity"], reverse=True)
-            top_results = results[:3]
+            top_results = results[:5]
             
             if top_results:
-                relevant_context = "\n\nRelevant information from your uploaded materials:\n"
+                relevant_context = "\n\nRelevant information from available materials:\n"
                 for i, result in enumerate(top_results, 1):
                     file_name = result["metadata"].get("file_name", "Unknown")
-                    relevant_context += f"\n{i}. From {file_name}:\n{result['content'][:500]}...\n"
+                    source_label = "System Textbook" if result.get("is_system") else "Your Upload"
+                    relevant_context += f"\n{i}. From {file_name} ({source_label}):\n{result['content'][:500]}...\n"
                 
-                # Update access tracking
+                # Update access tracking (only for user's materials, not system materials)
                 for entry in vector_entries:
-                    if any(entry.content == result["content"] for result in top_results):
+                    if entry.user_id != SYSTEM_USER_ID and any(entry.content == result["content"] for result in top_results):
                         entry.last_accessed = func.now()
                         entry.access_count += 1
                 db.commit()
     
     except Exception as e:
-        print(f"RAG search error: {e}")
-        # Continue without RAG context if search fails
+        error_msg = str(e)
+        print(f"RAG search error: {error_msg}")
+        # Log more specific error information
+        if "403" in error_msg or "forbidden" in error_msg.lower():
+            print("⚠️  OpenAI API key issue detected (403). Chatbot will work without RAG context. Please check your API key configuration.")
+        elif "401" in error_msg or "invalid_api_key" in error_msg.lower():
+            print("⚠️  Invalid OpenAI API key detected. Chatbot will work without RAG context. Please update your OPENAI_API_KEY in .env file.")
+        # Continue without RAG context if search fails - chatbot will still work
     
     # Build messages with RAG context
     system_prompt = f"""You are a helpful AI assistant for Clyvara, a medical education platform. You can answer questions about medical topics, general knowledge, current events, and provide practical information.
@@ -2025,7 +2363,25 @@ When referencing information from uploaded materials, mention the source file na
         return ChatOut(reply=reply, thread_id=thread_id)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+        error_msg = str(e)
+        # Provide more specific error messages for common OpenAI API issues
+        if "401" in error_msg or "invalid_api_key" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Chat error: Invalid OpenAI API key. Please check your OPENAI_API_KEY in the .env file."
+            )
+        elif "403" in error_msg or "forbidden" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Chat error: API key access denied (403). This may be due to insufficient quota, expired key, or restricted permissions. Please check your OpenAI account."
+            )
+        elif "429" in error_msg or "rate limit" in error_msg.lower():
+            raise HTTPException(
+                status_code=500,
+                detail="Chat error: Rate limit exceeded. Please wait a moment and try again."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Chat error: {error_msg}")
 
 # Care Plan API Endpoints
 @app.post("/api/care-plans")
@@ -2369,6 +2725,16 @@ async def delete_care_plan(
         raise HTTPException(status_code=500, detail=f"Error deleting care plan: {str(e)}")
 
 # Profile API Endpoints
+def _get_user_uuid(user_id):
+    """Helper function to convert user_id string to UUID"""
+    from uuid import UUID as UUIDType
+    if isinstance(user_id, str):
+        try:
+            return UUIDType(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid user ID format: {user_id}")
+    return user_id
+
 @app.post("/api/profile")
 async def create_or_update_profile(
     profile_data: Dict[str, Any] = Body(...),
@@ -2377,17 +2743,44 @@ async def create_or_update_profile(
 ):
     """Create or update user profile"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_str = current_user["user_id"]
+        print(f"DEBUG: Original user_id: {user_id_str}, type: {type(user_id_str)}")
+        
+        user_id_uuid = _get_user_uuid(user_id_str)
+        print(f"DEBUG: Converted user_id UUID: {user_id_uuid}, type: {type(user_id_uuid)}")
+        print(f"DEBUG: Profile data: {profile_data}")
+        
+        # Check if profile exists with string ID (in case of mismatch)
+        existing_profile_str = None
+        try:
+            existing_profile_str = (
+                db.query(Profile)
+                .filter(Profile.id == user_id_str)
+                .first()
+            )
+            if existing_profile_str:
+                print(f"DEBUG: Found profile with string ID: {existing_profile_str.id}")
+        except Exception as e:
+            print(f"DEBUG: Error checking string ID (expected if UUID type): {e}")
+        
         # clean grad_year so "" doesn't break integer column
         raw_grad_year = profile_data.get("grad_year")
         if isinstance(raw_grad_year, str):
             raw_grad_year = raw_grad_year.strip() or None
 
-        # Check if profile already exists
+        # Check if profile already exists with UUID
         existing_profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
+        print(f"DEBUG: Existing profile found (UUID): {existing_profile is not None}")
+        
+        # If found with string but not UUID, use the string one
+        if existing_profile_str and not existing_profile:
+            print(f"DEBUG: Using profile found with string ID")
+            existing_profile = existing_profile_str
 
         if existing_profile:
             # Update existing profile
@@ -2400,8 +2793,11 @@ async def create_or_update_profile(
             if hasattr(existing_profile, "updated_at"):
                 existing_profile.updated_at = func.now()
 
+            print(f"DEBUG: Updating existing profile, committing...")
             db.commit()
+            print(f"DEBUG: Update commit successful, refreshing...")
             db.refresh(existing_profile)
+            print(f"DEBUG: Profile updated: {existing_profile.id}, {existing_profile.full_name}")
 
             return {
                 "success": True,
@@ -2422,17 +2818,57 @@ async def create_or_update_profile(
             }
         else:
             # Create new profile
-            profile = Profile(
-                id=current_user["user_id"],
-                full_name=profile_data.get("full_name"),
-                institution=profile_data.get("institution"),
-                grad_year=raw_grad_year,
-                specialty=profile_data.get("specialty"),
-            )
+            # First, check if there's already a profile with this ID in any format
+            print(f"DEBUG: No existing profile found, creating new one...")
+            
+            # List all existing profiles to debug
+            try:
+                all_profiles = db.query(Profile).limit(10).all()
+                print(f"DEBUG: Sample of existing profiles in DB ({len(all_profiles)} shown):")
+                for p in all_profiles:
+                    print(f"  - Profile ID: {p.id} (type: {type(p.id).__name__}), name: {p.full_name}")
+            except Exception as e:
+                print(f"DEBUG: Could not list profiles: {e}")
+            
+            try:
+                profile = Profile(
+                    id=user_id_uuid,
+                    full_name=profile_data.get("full_name"),
+                    institution=profile_data.get("institution"),
+                    grad_year=raw_grad_year,
+                    specialty=profile_data.get("specialty"),
+                )
 
-            db.add(profile)
-            db.commit()
-            db.refresh(profile)
+                db.add(profile)
+                print(f"DEBUG: Profile added to session, attempting commit...")
+                db.commit()
+                print(f"DEBUG: Commit successful, refreshing profile...")
+                db.refresh(profile)
+                print(f"DEBUG: Profile refreshed: {profile.id}, {profile.full_name}")
+            except Exception as create_error:
+                db.rollback()
+                error_type = type(create_error).__name__
+                error_msg = str(create_error)
+                print(f"DEBUG: Error creating profile!")
+                print(f"DEBUG: Error type: {error_type}")
+                print(f"DEBUG: Error message: {error_msg}")
+                
+                # Check for common issues
+                if "duplicate" in error_msg.lower() or "unique" in error_msg.lower():
+                    print(f"DEBUG: Possible duplicate key error - profile may already exist")
+                    # Try to find it
+                    try:
+                        found = db.query(Profile).filter(Profile.id == user_id_str).first()
+                        if found:
+                            print(f"DEBUG: Found existing profile with string ID: {found.id}")
+                        found_uuid = db.query(Profile).filter(Profile.id == user_id_uuid).first()
+                        if found_uuid:
+                            print(f"DEBUG: Found existing profile with UUID: {found_uuid.id}")
+                    except:
+                        pass
+                
+                # Re-raise to show the actual error
+                raise
 
             return {
                 "success": True,
@@ -2451,10 +2887,21 @@ async def create_or_update_profile(
                 },
             }
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         db.rollback()
         # also log this on the server so you can see the exact DB error
-        print("Error saving profile:", e)
+        import traceback
+        error_trace = traceback.format_exc()
+        print("=" * 50)
+        print("ERROR SAVING PROFILE:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print("Full traceback:")
+        print(error_trace)
+        print("=" * 50)
         raise HTTPException(status_code=500, detail=f"Error saving profile: {str(e)}")
 
 @app.get("/api/profile")
@@ -2464,9 +2911,12 @@ async def get_profile(
 ):
     """Get user profile"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_uuid = _get_user_uuid(current_user["user_id"])
+        
         profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
 
@@ -2512,9 +2962,12 @@ async def get_my_profile_with_user_data(
 ):
     """Get combined user data from Supabase and profile from database"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_uuid = _get_user_uuid(current_user["user_id"])
+        
         profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
 
@@ -2630,9 +3083,12 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
         query_text = f"{care_plan.diagnosis} {care_plan.procedure} anesthesia care plan"
         query_embedding = generate_embeddings(query_text)
         
-        # Get relevant vector entries
+        # Get relevant vector entries (user's materials AND system materials)
         vector_entries = db.query(VectorIndexEntry).filter(
-            VectorIndexEntry.user_id == care_plan.user_id
+            or_(
+                VectorIndexEntry.user_id == care_plan.user_id,
+                VectorIndexEntry.user_id == SYSTEM_USER_ID
+            )
         ).all()
         
         # Calculate similarity and get top results
@@ -2642,7 +3098,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             results.append({
                 "content": entry.content,
                 "similarity": similarity,
-                "metadata": entry.vector_metadata
+                "metadata": entry.vector_metadata,
+                "is_system": entry.user_id == SYSTEM_USER_ID
             })
         
         # Sort by similarity and get top 5 most relevant chunks
@@ -2655,7 +3112,8 @@ def build_care_plan_context(care_plan: CarePlan, db: Session) -> str:
             context_parts.append("\nRelevant Medical Literature:")
             for i, result in enumerate(top_results, 1):
                 source_name = result["metadata"].get("file_name", "Unknown Source")
-                context_parts.append(f"\n{i}. From {source_name}:\n{result['content'][:300]}...")
+                source_label = "System Textbook" if result.get("is_system") else "User Material"
+                context_parts.append(f"\n{i}. From {source_name} ({source_label}):\n{result['content'][:300]}...")
         
         return "\n".join(context_parts)
         
