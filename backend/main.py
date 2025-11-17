@@ -17,7 +17,11 @@ import jwt
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile, LearningPlan, LearningPlanProgress
+from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile
+from material_cache import (
+    get_cached_text, cache_text, invalidate_cache, preload_system_materials, get_cache_stats,
+    get_cached_vector_entries, cache_vector_entries, invalidate_vector_cache
+)
 
 load_dotenv()
 
@@ -82,6 +86,20 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Preload system materials into cache on startup"""
+    try:
+        from database import get_session_local
+        db = get_session_local()()
+        try:
+            preload_system_materials(db, SYSTEM_USER_ID)
+            print("Material cache initialized")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Warning: Could not preload system materials: {e}")
 
 # File processing functions
 def extract_text_from_pdf(file_content: bytes) -> str:
@@ -172,6 +190,21 @@ def health_check():
         "database": "connected" if test_connection() else "disconnected"
     }
 
+@app.get("/api/cache/stats")
+def get_cache_stats_endpoint():
+    """Get material cache statistics"""
+    try:
+        stats = get_cache_stats()
+        return {
+            "success": True,
+            "cache_stats": stats
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.get("/api/tables")
 def list_tables(db: Session = Depends(get_db)):
     """List all tables in the database"""
@@ -187,6 +220,33 @@ def list_tables(db: Session = Depends(get_db)):
         return {"tables": tables, "count": len(tables)}
     except Exception as e:
         return {"error": f"Database error: {str(e)}"}
+
+@app.post("/api/ensure-tables")
+def ensure_tables():
+    """Ensure all tables exist, create if they don't"""
+    try:
+        from database import init_db, get_engine
+        from sqlalchemy import inspect
+        # Use init_db to create schemas and tables
+        success = init_db()
+        if success:
+            # Verify profiles table exists
+            engine = get_engine()
+            inspector = inspect(engine)
+            tables_in_main = inspector.get_table_names(schema='main')
+            profiles_exists = 'profiles' in tables_in_main
+            
+            return {
+                "success": True, 
+                "message": "All tables ensured/created successfully",
+                "profiles_table_exists": profiles_exists,
+                "tables_in_main_schema": tables_in_main
+            }
+        else:
+            return {"success": False, "message": "Failed to create tables"}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc()}
 
 @app.post("/api/test-auth")
 def test_authentication_flow(
@@ -1802,6 +1862,9 @@ async def upload_file(
         material.processed_at = func.now()
         db.commit()
         
+        # Cache the extracted text
+        cache_text(material.id, extracted_text)
+        
         return {
             "success": True,
             "material_id": material.id,
@@ -1987,6 +2050,9 @@ async def upload_system_material(
             bg_material.processed_at = func.now()
             background_db.commit()
             
+            # Cache the extracted text
+            cache_text(bg_material.id, extracted_text)
+            
             print(f"✓ Successfully processed system material: {file.filename} ({successful_chunks} chunks)")
             
         except Exception as e:
@@ -2030,27 +2096,38 @@ def get_user_materials(
         Material.user_id == current_user['user_id']
     ).order_by(Material.uploaded_at.desc()).all()
     
+    result_materials = []
+    for material in materials:
+        # Try to get from cache first
+        cached_text = get_cached_text(material.id)
+        
+        # If not in cache, use database value and cache it
+        extracted_text = cached_text if cached_text is not None else material.extracted_text
+        
+        # Cache the text if it wasn't cached and exists
+        if cached_text is None and extracted_text:
+            cache_text(material.id, extracted_text)
+        
+        result_materials.append({
+            "id": material.id,
+            "title": material.title,
+            "file_type": material.file_type,
+            "file_path": material.file_path,
+            "file_size": material.file_size,
+            "status": material.status,
+            "processing_progress": material.processing_progress,
+            "processing_error": material.processing_error,
+            "extracted_text": extracted_text,
+            "chunk_count": material.chunk_count,
+            "total_tokens": material.total_tokens,
+            "embedding_model": material.embedding_model,
+            "uploaded_at": material.uploaded_at.isoformat(),
+            "processed_at": material.processed_at.isoformat() if material.processed_at else None,
+            "last_accessed": material.last_accessed.isoformat() if material.last_accessed else None
+        })
+    
     return {
-        "materials": [
-            {
-                "id": material.id,
-                "title": material.title,
-                "file_type": material.file_type,
-                "file_path": material.file_path,
-                "file_size": material.file_size,
-                "status": material.status,
-                "processing_progress": material.processing_progress,
-                "processing_error": material.processing_error,
-                "extracted_text": material.extracted_text,
-                "chunk_count": material.chunk_count,
-                "total_tokens": material.total_tokens,
-                "embedding_model": material.embedding_model,
-                "uploaded_at": material.uploaded_at.isoformat(),
-                "processed_at": material.processed_at.isoformat() if material.processed_at else None,
-                "last_accessed": material.last_accessed.isoformat() if material.last_accessed else None
-            }
-            for material in materials
-        ]
+        "materials": result_materials
     }
 
 @app.delete("/api/materials/{material_id}")
@@ -2069,6 +2146,10 @@ def delete_material(
     
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
+    
+    # Invalidate caches before deleting
+    invalidate_cache(material_id)
+    invalidate_vector_cache(material_id)
     
     # Delete associated vector entries
     vector_entries = db.query(VectorIndexEntry).filter(
@@ -2644,6 +2725,16 @@ async def delete_care_plan(
         raise HTTPException(status_code=500, detail=f"Error deleting care plan: {str(e)}")
 
 # Profile API Endpoints
+def _get_user_uuid(user_id):
+    """Helper function to convert user_id string to UUID"""
+    from uuid import UUID as UUIDType
+    if isinstance(user_id, str):
+        try:
+            return UUIDType(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid user ID format: {user_id}")
+    return user_id
+
 @app.post("/api/profile")
 async def create_or_update_profile(
     profile_data: Dict[str, Any] = Body(...),
@@ -2652,17 +2743,44 @@ async def create_or_update_profile(
 ):
     """Create or update user profile"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_str = current_user["user_id"]
+        print(f"DEBUG: Original user_id: {user_id_str}, type: {type(user_id_str)}")
+        
+        user_id_uuid = _get_user_uuid(user_id_str)
+        print(f"DEBUG: Converted user_id UUID: {user_id_uuid}, type: {type(user_id_uuid)}")
+        print(f"DEBUG: Profile data: {profile_data}")
+        
+        # Check if profile exists with string ID (in case of mismatch)
+        existing_profile_str = None
+        try:
+            existing_profile_str = (
+                db.query(Profile)
+                .filter(Profile.id == user_id_str)
+                .first()
+            )
+            if existing_profile_str:
+                print(f"DEBUG: Found profile with string ID: {existing_profile_str.id}")
+        except Exception as e:
+            print(f"DEBUG: Error checking string ID (expected if UUID type): {e}")
+        
         # clean grad_year so "" doesn't break integer column
         raw_grad_year = profile_data.get("grad_year")
         if isinstance(raw_grad_year, str):
             raw_grad_year = raw_grad_year.strip() or None
 
-        # Check if profile already exists
+        # Check if profile already exists with UUID
         existing_profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
+        print(f"DEBUG: Existing profile found (UUID): {existing_profile is not None}")
+        
+        # If found with string but not UUID, use the string one
+        if existing_profile_str and not existing_profile:
+            print(f"DEBUG: Using profile found with string ID")
+            existing_profile = existing_profile_str
 
         if existing_profile:
             # Update existing profile
@@ -2675,8 +2793,11 @@ async def create_or_update_profile(
             if hasattr(existing_profile, "updated_at"):
                 existing_profile.updated_at = func.now()
 
+            print(f"DEBUG: Updating existing profile, committing...")
             db.commit()
+            print(f"DEBUG: Update commit successful, refreshing...")
             db.refresh(existing_profile)
+            print(f"DEBUG: Profile updated: {existing_profile.id}, {existing_profile.full_name}")
 
             return {
                 "success": True,
@@ -2697,17 +2818,57 @@ async def create_or_update_profile(
             }
         else:
             # Create new profile
-            profile = Profile(
-                id=current_user["user_id"],
-                full_name=profile_data.get("full_name"),
-                institution=profile_data.get("institution"),
-                grad_year=raw_grad_year,
-                specialty=profile_data.get("specialty"),
-            )
+            # First, check if there's already a profile with this ID in any format
+            print(f"DEBUG: No existing profile found, creating new one...")
+            
+            # List all existing profiles to debug
+            try:
+                all_profiles = db.query(Profile).limit(10).all()
+                print(f"DEBUG: Sample of existing profiles in DB ({len(all_profiles)} shown):")
+                for p in all_profiles:
+                    print(f"  - Profile ID: {p.id} (type: {type(p.id).__name__}), name: {p.full_name}")
+            except Exception as e:
+                print(f"DEBUG: Could not list profiles: {e}")
+            
+            try:
+                profile = Profile(
+                    id=user_id_uuid,
+                    full_name=profile_data.get("full_name"),
+                    institution=profile_data.get("institution"),
+                    grad_year=raw_grad_year,
+                    specialty=profile_data.get("specialty"),
+                )
 
-            db.add(profile)
-            db.commit()
-            db.refresh(profile)
+                db.add(profile)
+                print(f"DEBUG: Profile added to session, attempting commit...")
+                db.commit()
+                print(f"DEBUG: Commit successful, refreshing profile...")
+                db.refresh(profile)
+                print(f"DEBUG: Profile refreshed: {profile.id}, {profile.full_name}")
+            except Exception as create_error:
+                db.rollback()
+                error_type = type(create_error).__name__
+                error_msg = str(create_error)
+                print(f"DEBUG: Error creating profile!")
+                print(f"DEBUG: Error type: {error_type}")
+                print(f"DEBUG: Error message: {error_msg}")
+                
+                # Check for common issues
+                if "duplicate" in error_msg.lower() or "unique" in error_msg.lower():
+                    print(f"DEBUG: Possible duplicate key error - profile may already exist")
+                    # Try to find it
+                    try:
+                        found = db.query(Profile).filter(Profile.id == user_id_str).first()
+                        if found:
+                            print(f"DEBUG: Found existing profile with string ID: {found.id}")
+                        found_uuid = db.query(Profile).filter(Profile.id == user_id_uuid).first()
+                        if found_uuid:
+                            print(f"DEBUG: Found existing profile with UUID: {found_uuid.id}")
+                    except:
+                        pass
+                
+                # Re-raise to show the actual error
+                raise
 
             return {
                 "success": True,
@@ -2726,10 +2887,21 @@ async def create_or_update_profile(
                 },
             }
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         db.rollback()
         # also log this on the server so you can see the exact DB error
-        print("Error saving profile:", e)
+        import traceback
+        error_trace = traceback.format_exc()
+        print("=" * 50)
+        print("ERROR SAVING PROFILE:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print("Full traceback:")
+        print(error_trace)
+        print("=" * 50)
         raise HTTPException(status_code=500, detail=f"Error saving profile: {str(e)}")
 
 @app.get("/api/profile")
@@ -2739,9 +2911,12 @@ async def get_profile(
 ):
     """Get user profile"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_uuid = _get_user_uuid(current_user["user_id"])
+        
         profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
 
@@ -2787,9 +2962,12 @@ async def get_my_profile_with_user_data(
 ):
     """Get combined user data from Supabase and profile from database"""
     try:
+        # Convert user_id string to UUID if needed
+        user_id_uuid = _get_user_uuid(current_user["user_id"])
+        
         profile = (
             db.query(Profile)
-            .filter(Profile.id == current_user["user_id"])
+            .filter(Profile.id == user_id_uuid)
             .first()
         )
 

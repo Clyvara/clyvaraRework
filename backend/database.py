@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, UUID, Integer, Boolean, DECIMAL, Text, text
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Boolean, DECIMAL, Text, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy.dialects.postgresql import INET, UUID
 from sqlalchemy.sql import func
 import os
 from dotenv import load_dotenv
@@ -898,9 +898,8 @@ class AgentState(Base):
     last_activity = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True)
     agent_metadata = Column(JSON, default=dict)
-
+    
 # Profile Management
-
 class Profile(Base):
     __tablename__ = "profiles"
     __table_args__ = {'schema': 'main'}
