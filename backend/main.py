@@ -2530,7 +2530,7 @@ async def get_my_profile_with_user_data(
 
         return {
             "success": True,
-            "user": user_data,
+            "profile": user_data,
         }
 
     except Exception as e:
