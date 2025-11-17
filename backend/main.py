@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -18,7 +18,7 @@ from fastapi import Header
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan
+from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile
 
 load_dotenv()
 
@@ -2367,6 +2367,178 @@ async def delete_care_plan(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting care plan: {str(e)}")
+
+# Profile API Endpoints
+@app.post("/api/profile")
+async def create_or_update_profile(
+    profile_data: Dict[str, Any] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create or update user profile"""
+    try:
+        # clean grad_year so "" doesn't break integer column
+        raw_grad_year = profile_data.get("grad_year")
+        if isinstance(raw_grad_year, str):
+            raw_grad_year = raw_grad_year.strip() or None
+
+        # Check if profile already exists
+        existing_profile = (
+            db.query(Profile)
+            .filter(Profile.id == current_user["user_id"])
+            .first()
+        )
+
+        if existing_profile:
+            # Update existing profile
+            existing_profile.full_name = profile_data.get("full_name")
+            existing_profile.institution = profile_data.get("institution")
+            existing_profile.grad_year = raw_grad_year
+            existing_profile.specialty = profile_data.get("specialty")
+
+            # only set updated_at if the column actually exists
+            if hasattr(existing_profile, "updated_at"):
+                existing_profile.updated_at = func.now()
+
+            db.commit()
+            db.refresh(existing_profile)
+
+            return {
+                "success": True,
+                "message": "Profile updated successfully",
+                "profile": {
+                    "id": existing_profile.id,
+                    "full_name": existing_profile.full_name,
+                    "institution": existing_profile.institution,
+                    "grad_year": existing_profile.grad_year,
+                    "specialty": existing_profile.specialty,
+                    # guard updated_at in case it doesn't exist / is None
+                    "updated_at": (
+                        existing_profile.updated_at.isoformat()
+                        if getattr(existing_profile, "updated_at", None)
+                        else None
+                    ),
+                },
+            }
+        else:
+            # Create new profile
+            profile = Profile(
+                id=current_user["user_id"],
+                full_name=profile_data.get("full_name"),
+                institution=profile_data.get("institution"),
+                grad_year=raw_grad_year,
+                specialty=profile_data.get("specialty"),
+            )
+
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+
+            return {
+                "success": True,
+                "message": "Profile created successfully",
+                "profile": {
+                    "id": profile.id,
+                    "full_name": profile.full_name,
+                    "institution": profile.institution,
+                    "grad_year": profile.grad_year,
+                    "specialty": profile.specialty,
+                    "created_at": (
+                        profile.created_at.isoformat()
+                        if getattr(profile, "created_at", None)
+                        else None
+                    ),
+                },
+            }
+
+    except Exception as e:
+        db.rollback()
+        # also log this on the server so you can see the exact DB error
+        print("Error saving profile:", e)
+        raise HTTPException(status_code=500, detail=f"Error saving profile: {str(e)}")
+
+@app.get("/api/profile")
+async def get_profile(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get user profile"""
+    try:
+        profile = (
+            db.query(Profile)
+            .filter(Profile.id == current_user["user_id"])
+            .first()
+        )
+
+        if not profile:
+            return {
+                "success": True,
+                "profile": None,
+                "message": "No profile found",
+            }
+
+        return {
+            "success": True,
+            "profile": {
+                "id": profile.id,
+                "full_name": profile.full_name,
+                "institution": profile.institution,
+                "grad_year": profile.grad_year,
+                "specialty": profile.specialty,
+                "created_at": (
+                    profile.created_at.isoformat()
+                    if getattr(profile, "created_at", None)
+                    else None
+                ),
+                "updated_at": (
+                    profile.updated_at.isoformat()
+                    if getattr(profile, "updated_at", None)
+                    else None
+                ),
+            },
+        }
+
+    except Exception as e:
+        print("Error fetching profile:", e)
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching profile: {str(e)}"
+        )
+
+
+@app.get("/api/profile/me")
+async def get_my_profile_with_user_data(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get combined user data from Supabase and profile from database"""
+    try:
+        profile = (
+            db.query(Profile)
+            .filter(Profile.id == current_user["user_id"])
+            .first()
+        )
+
+        user_data = {
+            "user_id": current_user["user_id"],
+            "email": current_user.get("email"),
+            "full_name": profile.full_name if profile else None,
+            "institution": profile.institution if profile else None,
+            "grad_year": profile.grad_year if profile else None,
+            "specialty": profile.specialty if profile else None,
+            "profile_exists": profile is not None,
+        }
+
+        return {
+            "success": True,
+            "user": user_data,
+        }
+
+    except Exception as e:
+        print("Error fetching user data:", e)
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching user data: {str(e)}"
+        )
+
 
 # Helper functions for care plan operations
 def build_care_plan_text(care_plan_data: dict) -> str:

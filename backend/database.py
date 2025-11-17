@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, UUID, Integer, Boolean, DECIMAL, Text
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, UUID, Integer, Boolean, DECIMAL, Text, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import INET
@@ -147,6 +147,23 @@ def test_connection():
     except Exception as e:
         print(f"Database connection failed: {e}")
         return False
+    
+def init_db():
+    """Create schemas, extension, and all tables."""
+    try:
+        engine = get_engine()
+        with engine.begin() as conn:
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS main;"))
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS user_data;"))
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS dashboard;"))
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
+        
+        Base.metadata.create_all(bind=engine)
+        print("Schemas + tables created successfully!")
+        return True
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        return False
 
 def create_all_tables():
     """Create all tables in the database"""
@@ -159,10 +176,8 @@ def create_all_tables():
         print(f"Error creating tables: {e}")
         return False
 
-if __name__ == "__main__":
-    if test_connection():
-        print("\nCreating tables...")
-        create_all_tables()
+
+
 
 # Medical Education Platform - SQLAlchemy Models
 # Converted from TypeScript Drizzle schemas
@@ -884,3 +899,22 @@ class AgentState(Base):
     is_active = Column(Boolean, default=True)
     agent_metadata = Column(JSON, default=dict)
 
+# Profile Management
+
+class Profile(Base):
+    __tablename__ = "profiles"
+    __table_args__ = {'schema': 'main'}
+    
+    id = Column(UUID, primary_key=True)  
+    full_name = Column(String, nullable=True)
+    institution = Column(String, nullable=True)
+    grad_year = Column(String, nullable=True)
+    specialty = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+if __name__ == "__main__":
+    if test_connection():
+        print("\nInitializing database...")
+        init_db()
