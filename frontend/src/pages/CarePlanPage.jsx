@@ -1,6 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import styled from "styled-components";
-import { downloadCarePlanTxt } from "../utils/exportCarePlan";
 import { buildFormState } from "../utils/buildFormState";
 import { supabase } from "../utils/supabaseClient";
 
@@ -338,6 +337,11 @@ const NextButton = styled.button`
     outline: 2px solid #4f46e5;
     outline-offset: 2px;
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 const ActionBar = styled.div`
@@ -457,6 +461,7 @@ const LoadingSpinner = styled.div`
 `;
 
 export default function CarePlanPage() {
+  const pageTopRef = useRef(null);
   const [currentTab, setCurrentTab] = useState("info"); // "info" | "history" | "assessment" | "labs"
   
   // Database integration states
@@ -598,7 +603,7 @@ export default function CarePlanPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.error("No active session");
-        return;
+        return null;
       }
 
       const formState = buildFormState({
@@ -631,14 +636,16 @@ export default function CarePlanPage() {
         const data = await response.json();
         setCurrentCarePlanId(data.care_plan_id);
         await loadCarePlans(); // Refresh the list
-        alert("Care plan saved successfully!");
+        return data.care_plan_id;
       } else {
         console.error("Failed to save care plan");
         alert("Failed to save care plan");
+        return null;
       }
     } catch (error) {
       console.error("Error saving care plan:", error);
       alert("Error saving care plan");
+      return null;
     } finally {
       setIsSaving(false);
     }
@@ -724,7 +731,6 @@ export default function CarePlanPage() {
         setAiRecommendations(carePlan.ai_recommendations);
         setShowCarePlanList(false);
         
-        alert("Care plan loaded successfully!");
       } else {
         console.error("Failed to load care plan");
         alert("Failed to load care plan");
@@ -737,8 +743,10 @@ export default function CarePlanPage() {
     }
   };
 
-  const generateAIRecommendations = async () => {
-    if (!currentCarePlanId) {
+  const generateAIRecommendations = async (carePlanIdOverride = null) => {
+    const carePlanIdToUse = carePlanIdOverride ?? currentCarePlanId;
+
+    if (!carePlanIdToUse) {
       alert("Please save the care plan first before generating AI recommendations");
       return;
     }
@@ -751,7 +759,7 @@ export default function CarePlanPage() {
         return;
       }
 
-      const response = await fetch(`http://localhost:8000/api/care-plans/${currentCarePlanId}/generate-ai`, {
+      const response = await fetch(`http://localhost:8000/api/care-plans/${carePlanIdToUse}/generate-ai`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${session.access_token}`
@@ -761,7 +769,6 @@ export default function CarePlanPage() {
       if (response.ok) {
         const data = await response.json();
         setAiRecommendations(data.recommendations.anesthesia_plan);
-        alert("AI recommendations generated successfully!");
       } else {
         console.error("Failed to generate AI recommendations");
         alert("Failed to generate AI recommendations");
@@ -799,7 +806,6 @@ export default function CarePlanPage() {
           setCurrentCarePlanId(null);
           setAiRecommendations(null);
         }
-        alert("Care plan deleted successfully!");
       } else {
         console.error("Failed to delete care plan");
         alert("Failed to delete care plan");
@@ -890,6 +896,26 @@ export default function CarePlanPage() {
     } else if (currentTab === "labs") {
       setCurrentTab("assessment");
     }
+  };
+
+  const handleGenerateCarePlan = async () => {
+    if (isSaving || isGeneratingAI) return;
+  
+    const carePlanId = await saveCarePlan();
+    if (!carePlanId) return;
+  
+    await generateAIRecommendations(carePlanId);
+  
+    setTimeout(() => {
+      if (pageTopRef.current) {
+        pageTopRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }, 0);
   };
 
   const renderFooter = (showBack, nextLabel) => (
@@ -1492,15 +1518,16 @@ export default function CarePlanPage() {
 
         <div style={{ display: 'flex', gap: '12px' }}>
           <NextButton
-            onClick={() => {
-              // Option A: just download the .txt
-              downloadCarePlanTxt(formState);
-
-              // Option B (optional): also log the string somewhere for debugging
-              // console.log(buildExportText(formState));
-            }}
+            onClick={handleGenerateCarePlan}
+            disabled={isSaving || isGeneratingAI}
           >
-            Generate Care Plan
+            {isSaving || isGeneratingAI ? (
+              <>
+                <LoadingSpinner />&nbsp;Generating Care Plan...
+              </>
+            ) : (
+              "Generate Care Plan"
+            )}
           </NextButton>
         </div>
       </FooterRow>
@@ -1513,61 +1540,8 @@ export default function CarePlanPage() {
   else if (currentTab === "assessment") tabContent = renderAssessmentTab();
   else if (currentTab === "labs") tabContent = renderLabsTab();
 
-  const formState = buildFormState({
-    age,
-    sex,
-    height,
-    weight,
-    diagnosis,
-    tempF,
-    bp,
-    hr,
-    rr,
-    pmh,
-    psh,
-    anesthesiaHx,
-    meds,
-    alcohol,
-    substance,
-    neuro,
-    heent,
-    resp,
-    cardio,
-    gi,
-    gu,
-    endo,
-    otherFindings,
-    mallampati,
-    ulbt,
-    thyromental,
-    interincisor,
-    dentition,
-    neck,
-    oralMucosa,
-    na,
-    k,
-    cl,
-    co2,
-    bun,
-    cr,
-    glu,
-    wbc,
-    hgb,
-    hct,
-    plt,
-    pt,
-    ptt,
-    inr,
-    abg,
-    otherLabs,
-    ekg,
-    cxr,
-    echo,
-    otherImaging,
-  });
-
   return (
-    <PageWrapper>
+    <PageWrapper ref={pageTopRef}>
       <HeaderCard>
         <Title>AI Anesthesia Care Plan Generator</Title>
         <Subtitle>
@@ -1584,12 +1558,11 @@ export default function CarePlanPage() {
           <ActionButton onClick={clearForm}>
             New Care Plan
           </ActionButton>
-          <ActionButton onClick={saveCarePlan} disabled={isSaving}>
-            {isSaving ? <LoadingSpinner /> : null}
-            Save Care Plan
-          </ActionButton>
           {currentCarePlanId && (
-            <ActionButton onClick={generateAIRecommendations} disabled={isGeneratingAI}>
+            <ActionButton
+              onClick={() => generateAIRecommendations()}
+              disabled={isGeneratingAI}
+            >
               {isGeneratingAI ? <LoadingSpinner /> : null}
               Generate AI Recommendations
             </ActionButton>
