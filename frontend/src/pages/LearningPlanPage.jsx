@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import styled from "styled-components";
+import { supabase } from "../utils/supabaseClient";
 // If your file is named learningPlanQuestions.js, use:
 // import learningPlanQuestions from "../utils/learningPlanQuestions";
 import learningPlanQuestions from "../utils/learningPlanQuizQuestions";
@@ -52,6 +53,7 @@ const SectionHeader = styled.div`
 const SectionTitleRow = styled.div`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   color: #0f172a;
 `;
@@ -267,16 +269,153 @@ const ActionsRow = styled.div`
 export default function LearningPlanPage({
   videoUrl = "https://www.youtube.com/embed/B_tTymvDWXk", 
   caseStudy,
-  questions,
+  questions: propQuestions,
   allowCaseStudyEditing = false,
+  topic,
+  numQuestions = 3,
+  autoGenerate = true, // New prop to control auto-generation
 }) {
 
   const defaultCaseStudy = `CASE STUDY GOES HERE`;
+  const [questions, setQuestions] = useState(propQuestions || null);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [questionsError, setQuestionsError] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [editableCase, setEditableCase] = useState(caseStudy ?? defaultCaseStudy);
+  const [learningPlanId, setLearningPlanId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  // Store the quiz mapping when answers are selected to prevent re-shuffle issues
+  const [quizMapping, setQuizMapping] = useState({});
+
+  // Helper function to create or get learning plan (defined outside useEffect so it's accessible)
+  const createOrGetLearningPlan = React.useCallback(async (quizQuestions) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        return;
+      }
+
+      const learningPlanData = {
+        title: topic || "Learning Plan",
+        description: `Learning plan for ${topic || "case study"}`,
+        video_url: videoUrl,
+        video_title: videoUrl ? "Lesson Video" : null,
+        case_study: editableCase !== defaultCaseStudy ? editableCase : "",
+        case_study_editable: allowCaseStudyEditing,
+        quiz_questions: quizQuestions,
+        topic: topic || null,
+      };
+
+      const response = await fetch("http://localhost:8000/api/learning-plans", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(learningPlanData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.learning_plan_id) {
+          setLearningPlanId(data.learning_plan_id);
+        }
+      }
+    } catch (error) {
+      console.error("Error creating learning plan:", error);
+    }
+  }, [topic, videoUrl, editableCase, defaultCaseStudy, allowCaseStudyEditing]);
+
+  // Fetch questions from backend when caseStudy or topic changes
+  useEffect(() => {
+    const generateQuestions = async () => {
+      // Skip if questions are provided as prop or autoGenerate is false
+      if (propQuestions || !autoGenerate) {
+        return;
+      }
+
+      setIsLoadingQuestions(true);
+      setQuestionsError(null);
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.warn("No active session, using default questions");
+          setQuestions(null);
+          setIsLoadingQuestions(false);
+          return;
+        }
+
+        const requestBody = {
+          num_questions: numQuestions,
+        };
+
+        // Add case study or topic if available, otherwise backend will use system PDFs
+        if (editableCase && editableCase !== defaultCaseStudy) {
+          requestBody.case_study = editableCase;
+        } else if (topic) {
+          requestBody.topic = topic;
+        }
+        // If neither is provided, backend will generate questions from system PDFs
+
+        const response = await fetch("http://localhost:8000/api/learning-plan/generate-questions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.questions && data.questions.length > 0) {
+            setQuestions(data.questions);
+            // Reset answers and submitted state when new questions are generated
+            setAnswers({});
+            setSubmitted(false);
+            // Create or get learning plan after questions are generated
+            await createOrGetLearningPlan(data.questions);
+          } else {
+            throw new Error("No questions generated");
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+          throw new Error(errorData.detail || "Failed to generate questions");
+        }
+      } catch (error) {
+        console.error("Error generating questions:", error);
+        setQuestionsError(error.message);
+        // Fall back to default questions
+        setQuestions(null);
+      } finally {
+        setIsLoadingQuestions(false);
+      }
+    };
+
+    generateQuestions();
+  }, [editableCase, topic, numQuestions, autoGenerate, propQuestions, defaultCaseStudy, videoUrl, allowCaseStudyEditing, createOrGetLearningPlan]);
+
+  // Reset answers when questions change (safety check to prevent old answers persisting)
+  // Use a ref to track previous questions and only reset when questions actually change
+  const prevQuestionsRef = React.useRef(questions);
+  useEffect(() => {
+    // Only reset if questions changed from one set to another (not initial load)
+    if (questions && prevQuestionsRef.current && 
+        JSON.stringify(questions) !== JSON.stringify(prevQuestionsRef.current)) {
+      // Questions changed - reset answers to prevent old answers being submitted
+      setAnswers({});
+      setSubmitted(false);
+      setQuizMapping({}); // Also reset mapping when questions change
+    }
+    prevQuestionsRef.current = questions;
+  }, [questions]);
 
   const quiz = useMemo(() => {
     const source = questions ?? learningPlanQuestions;
   
-    return source.map(q => {
+    const shuffledQuiz = source.map(q => {
       const optionsWithIndex = q.options.map((opt, idx) => ({
         label: opt,
         originalIndex: idx,
@@ -292,15 +431,29 @@ export default function LearningPlanPage({
         opt => opt.originalIndex === q.correctIndex
       );
   
+      // Create mapping from shuffled index to original index
+      const indexMapping = optionsWithIndex.map((opt, shuffledIdx) => ({
+        shuffledIndex: shuffledIdx,
+        originalIndex: opt.originalIndex
+      }));
+  
       return {
         ...q,
         options: optionsWithIndex.map(o => o.label),
         correctIndex: newCorrectIndex,
+        indexMapping: indexMapping, // Store mapping for answer conversion
       };
     });
-  }, [questions]);  const [answers, setAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
-  const [editableCase, setEditableCase] = useState(caseStudy ?? defaultCaseStudy);
+    
+    // Store the mapping for each question to use during submission
+    const mapping = {};
+    shuffledQuiz.forEach(q => {
+      mapping[q.id] = q.indexMapping;
+    });
+    setQuizMapping(mapping);
+    
+    return shuffledQuiz;
+  }, [questions]);
 
   const score = useMemo(() => {
     if (!submitted) return null;
@@ -313,11 +466,131 @@ export default function LearningPlanPage({
 
   const handleSelect = (qid, idx) => {
     if (submitted) return; // lock answers after submit
-    setAnswers(prev => ({ ...prev, [qid]: idx }));
+    // idx is the shuffled index (0-3) that the user clicked
+    setAnswers(prev => {
+      const newAnswers = { ...prev, [qid]: idx };
+      console.log(`Selected answer for ${qid}: shuffled index ${idx}`, {
+        question: quiz.find(q => q.id === qid),
+        newAnswers
+      });
+      return newAnswers;
+    });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (submitted) return;
+    
     setSubmitted(true);
+    setIsSaving(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, quiz results not saved");
+        setIsSaving(false);
+        return;
+      }
+
+      // If we don't have a learning plan ID yet, create one first
+      let planId = learningPlanId;
+      if (!planId && questions) {
+        const learningPlanData = {
+          title: topic || "Learning Plan",
+          description: `Learning plan for ${topic || "case study"}`,
+          video_url: videoUrl,
+          video_title: videoUrl ? "Lesson Video" : null,
+          case_study: editableCase !== defaultCaseStudy ? editableCase : "",
+          case_study_editable: allowCaseStudyEditing,
+          quiz_questions: questions,
+          topic: topic || null,
+        };
+
+        const createResponse = await fetch("http://localhost:8000/api/learning-plans", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(learningPlanData)
+        });
+
+        if (createResponse.ok) {
+          const createData = await createResponse.json();
+          if (createData.success && createData.learning_plan_id) {
+            planId = createData.learning_plan_id;
+            setLearningPlanId(planId);
+          }
+        }
+      }
+
+      if (planId) {
+        // Map answers from shuffled indices to original indices
+        // The user selected answers using shuffled option indices, but backend expects original indices
+        // Use the stored quizMapping to ensure we use the same mapping that was active when answers were selected
+        const originalAnswers = {};
+        Object.keys(answers).forEach((questionId) => {
+          const userAnswerIndex = answers[questionId];
+          const questionMapping = quizMapping[questionId];
+          
+          if (userAnswerIndex !== undefined && questionMapping && questionMapping[userAnswerIndex]) {
+            // Convert shuffled index to original index using the stored mapping
+            const mapping = questionMapping[userAnswerIndex];
+            if (mapping.originalIndex !== undefined) {
+              originalAnswers[questionId] = mapping.originalIndex;
+            } else {
+              console.warn(`Mapping for ${questionId} missing originalIndex, using shuffled index ${userAnswerIndex}`);
+              originalAnswers[questionId] = userAnswerIndex;
+            }
+          } else if (userAnswerIndex !== undefined) {
+            // Fallback: if no mapping available, use the shuffled index directly
+            console.warn(`No mapping for ${questionId}, using shuffled index ${userAnswerIndex} directly`);
+            originalAnswers[questionId] = userAnswerIndex;
+          }
+        });
+        
+        // Debug log to verify mapping
+        console.log('Answer mapping debug:', {
+          userSelectedAnswers: answers,
+          mappedOriginalAnswers: originalAnswers,
+          quizMapping: quizMapping,
+          questions: quiz.map(q => ({ 
+            id: q.id, 
+            correctIndex: q.correctIndex,
+            storedMapping: quizMapping[q.id]
+          }))
+        });
+        
+        // Submit quiz results
+        const submitData = {
+          learning_plan_id: planId,
+          quiz_answers: originalAnswers,
+          video_watched: false, // Could be tracked separately
+          case_study_read: false, // Could be tracked separately
+        };
+
+        const submitResponse = await fetch("http://localhost:8000/api/learning-plans/submit-quiz", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(submitData)
+        });
+
+        if (submitResponse.ok) {
+          const submitResult = await submitResponse.json();
+          console.log("Quiz submitted successfully:", submitResult);
+        } else {
+          console.error("Failed to submit quiz");
+        }
+      } else {
+        console.warn("No learning plan ID, quiz results not saved");
+      }
+    } catch (error) {
+      console.error("Error submitting quiz:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -388,10 +661,91 @@ export default function LearningPlanPage({
         <SectionHeader>
           <SectionTitleRow>
             <SectionTitle>Knowledge Check</SectionTitle>
+            {autoGenerate && !propQuestions && (
+              <ActionButton
+                onClick={async () => {
+                  setIsLoadingQuestions(true);
+                  setQuestionsError(null);
+                  // Reset answers immediately when regenerate is clicked
+                  setAnswers({});
+                  setSubmitted(false);
+                  
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                      console.warn("No active session");
+                      return;
+                    }
+
+                    const requestBody = {
+                      num_questions: numQuestions,
+                    };
+
+                    // Add case study or topic if available, otherwise backend will use system PDFs
+                    if (editableCase && editableCase !== defaultCaseStudy) {
+                      requestBody.case_study = editableCase;
+                    } else if (topic) {
+                      requestBody.topic = topic;
+                    }
+                    // If neither is provided, backend will generate questions from system PDFs
+
+                    const response = await fetch("http://localhost:8000/api/learning-plan/generate-questions", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`
+                      },
+                      body: JSON.stringify(requestBody)
+                    });
+
+                    if (response.ok) {
+                      const data = await response.json();
+                      if (data.success && data.questions && data.questions.length > 0) {
+                        setQuestions(data.questions);
+                        // Ensure answers are reset (in case questions failed to generate)
+                        setAnswers({});
+                        setSubmitted(false);
+                        // Update learning plan with new questions
+                        await createOrGetLearningPlan(data.questions);
+                      } else {
+                        throw new Error("No questions generated");
+                      }
+                    } else {
+                      const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+                      throw new Error(errorData.detail || "Failed to generate questions");
+                    }
+                  } catch (error) {
+                    console.error("Error generating questions:", error);
+                    setQuestionsError(error.message);
+                    // Reset answers even on error
+                    setAnswers({});
+                    setSubmitted(false);
+                  } finally {
+                    setIsLoadingQuestions(false);
+                  }
+                }}
+                disabled={isLoadingQuestions}
+                style={{ marginLeft: 'auto', fontSize: '12px', padding: '6px 12px' }}
+              >
+                {isLoadingQuestions ? 'Generating...' : '🔄 Regenerate Questions'}
+              </ActionButton>
+            )}
           </SectionTitleRow>
         </SectionHeader>
 
         <Divider />
+        {isLoadingQuestions && (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+            <p>Generating questions based on your materials...</p>
+          </div>
+        )}
+        {questionsError && (
+          <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', marginBottom: '16px', color: '#991b1b' }}>
+            <p style={{ margin: 0, fontSize: '14px' }}>
+              ⚠️ Could not generate questions: {questionsError}. Using default questions.
+            </p>
+          </div>
+        )}
         <QuizList>
           {quiz.map((q, qi) => (
             <QuestionCard key={q.id}>
@@ -421,8 +775,8 @@ export default function LearningPlanPage({
 
         <Divider />
         <ActionsRow>
-          <ActionButton $variant="primary" onClick={handleSubmit} disabled={submitted}>
-            Submit Quiz
+          <ActionButton $variant="primary" onClick={handleSubmit} disabled={submitted || isSaving}>
+            {isSaving ? "Saving..." : submitted ? "Submitted" : "Submit Quiz"}
           </ActionButton>
           <ActionButton onClick={handleReset}>
             Reset Answers

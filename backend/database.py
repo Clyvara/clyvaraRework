@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Boolean, DECIMAL, Text, text
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Boolean, DECIMAL, Text, text, Numeric
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import INET, UUID
@@ -309,6 +309,55 @@ class LearningModule(Base):
     duration = Column(Integer, nullable=False)  # in minutes
     source = Column(String)
     created_at = Column(DateTime, server_default=func.now())
+
+class LearningPlan(Base):
+    __tablename__ = "learning_plans"
+    __table_args__ = {'schema': 'main'}
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)  # Supabase UUID
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    video_url = Column(String(500))
+    video_title = Column(String(255))
+    video_duration = Column(Integer)
+    case_study = Column(Text, nullable=False)
+    case_study_editable = Column(Boolean, default=False)
+    quiz_questions = Column(JSON, nullable=False)
+    topic = Column(String(255))
+    difficulty_level = Column(String(50))
+    estimated_duration = Column(Integer)
+    is_published = Column(Boolean, default=True)
+    is_template = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_by = Column(String)
+
+class LearningPlanProgress(Base):
+    __tablename__ = "learning_plan_progress"
+    __table_args__ = {'schema': 'main'}
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False)  # Supabase UUID
+    learning_plan_id = Column(Integer, nullable=False)
+    video_watched = Column(Boolean, default=False)
+    video_watched_at = Column(DateTime)
+    video_progress = Column(Integer, default=0)  # 0-100
+    case_study_read = Column(Boolean, default=False)
+    case_study_read_at = Column(DateTime)
+    case_study_notes = Column(Text)
+    quiz_submitted = Column(Boolean, default=False)
+    quiz_submitted_at = Column(DateTime)
+    quiz_answers = Column(JSON)
+    quiz_score = Column(Integer)
+    quiz_total = Column(Integer)
+    quiz_percentage = Column(Numeric)
+    attempt_count = Column(Integer, default=0)
+    completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime)
+    started_at = Column(DateTime, server_default=func.now())
+    last_accessed = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 class Test(Base):
     __tablename__ = "tests"

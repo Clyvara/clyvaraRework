@@ -17,7 +17,7 @@ import jwt
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile
+from database import get_db, test_connection, ChatMessage, UserInteraction, UserSession, Material, VectorIndexEntry, CarePlan, Profile, LearningPlan, LearningPlanProgress
 from material_cache import (
     get_cached_text, cache_text, invalidate_cache, preload_system_materials, get_cache_stats,
     get_cached_vector_entries, cache_vector_entries, invalidate_vector_cache
@@ -30,6 +30,9 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 # System materials user ID - materials with this user_id are accessible to all users
 SYSTEM_USER_ID = "SYSTEM"
+
+# Cache for general query embedding (since it's always the same)
+_general_query_embedding_cache = None
 
 def get_current_user(authorization: str = Header(None)):
     """Extract user info from Supabase JWT token"""
@@ -2723,6 +2726,464 @@ async def delete_care_plan(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting care plan: {str(e)}")
+
+# Learning Plan Question Generation with RAG
+class GenerateQuestionsRequest(BaseModel):
+    case_study: Optional[str] = None
+    topic: Optional[str] = None
+    num_questions: int = 3
+
+@app.post("/api/learning-plan/generate-questions")
+async def generate_learning_plan_questions(
+    request: GenerateQuestionsRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generate knowledge check questions using RAG from system PDFs and user-uploaded materials"""
+    if not client:
+        raise HTTPException(status_code=503, detail="OpenAI client not configured")
+    
+    try:
+        # Build query text from case study or topic, or use general query for system materials
+        query_text = ""
+        use_general_query = False
+        
+        if request.case_study:
+            query_text = f"Case Study: {request.case_study}"
+        elif request.topic:
+            query_text = f"Topic: {request.topic}"
+        else:
+            # No case study or topic provided - use general medical education query
+            query_text = "medical education anesthesia nursing clinical concepts"
+            use_general_query = True
+        
+        # RAG: Search user's materials AND system materials for relevant context
+        relevant_context = ""
+        try:
+            # OPTIMIZATION: Cache embedding for general queries (always the same)
+            global _general_query_embedding_cache
+            if use_general_query and _general_query_embedding_cache is not None:
+                query_embedding = _general_query_embedding_cache
+            else:
+                query_embedding = generate_embeddings(query_text)
+                if use_general_query:
+                    _general_query_embedding_cache = query_embedding
+            
+            # Get user's processed materials AND system materials (accessible to all users)
+            # If no case study/topic, prioritize system materials
+            if use_general_query:
+                # Get only system materials for general question generation
+                user_materials = db.query(Material).filter(
+                    Material.user_id == SYSTEM_USER_ID,
+                    Material.status == "processed"
+                ).all()
+            else:
+                # Get both user and system materials
+                user_materials = db.query(Material).filter(
+                    or_(
+                        Material.user_id == current_user['user_id'],
+                        Material.user_id == SYSTEM_USER_ID
+                    ),
+                    Material.status == "processed"
+                ).all()
+            
+            if user_materials:
+                material_ids = [m.id for m in user_materials]
+                
+                # AGGRESSIVE OPTIMIZATION: Drastically limit vector entries for speed
+                # For general queries, sample from different materials for diversity
+                # For specific queries, get top matches
+                if use_general_query:
+                    # Limit to 50 entries for very fast processing
+                    vector_entries = db.query(VectorIndexEntry).filter(
+                        VectorIndexEntry.source_id.in_(material_ids),
+                        VectorIndexEntry.source_type == "material",
+                        VectorIndexEntry.user_id == SYSTEM_USER_ID
+                    ).limit(50).all()
+                else:
+                    # For specific queries, limit to 30 for speed
+                    vector_entries = db.query(VectorIndexEntry).filter(
+                        VectorIndexEntry.source_id.in_(material_ids),
+                        VectorIndexEntry.source_type == "material",
+                        or_(
+                            VectorIndexEntry.user_id == current_user['user_id'],
+                            VectorIndexEntry.user_id == SYSTEM_USER_ID
+                        )
+                    ).limit(30).all()
+                
+                # OPTIMIZATION: Use numpy for faster similarity calculation if available
+                try:
+                    import numpy as np
+                    query_array = np.array(query_embedding)
+                    use_numpy = True
+                except ImportError:
+                    use_numpy = False
+                
+                # Calculate similarity scores and get top results
+                results = []
+                for entry in vector_entries:
+                    if use_numpy:
+                        entry_array = np.array(entry.embedding)
+                        # Cosine similarity: dot product / (norm1 * norm2)
+                        similarity = np.dot(query_array, entry_array) / (
+                            np.linalg.norm(query_array) * np.linalg.norm(entry_array)
+                        )
+                    else:
+                        # Fallback to simple dot product (faster than cosine for ranking)
+                        similarity = sum(a * b for a, b in zip(query_embedding, entry.embedding))
+                    
+                    results.append({
+                        "content": entry.content,
+                        "similarity": similarity,
+                        "metadata": entry.vector_metadata,
+                        "is_system": entry.user_id == SYSTEM_USER_ID
+                    })
+                
+                # AGGRESSIVE OPTIMIZATION: Minimal chunks and content for fastest response
+                num_results = 3 if use_general_query else 3  # Only 3 chunks max
+                results.sort(key=lambda x: x["similarity"], reverse=True)
+                top_results = results[:num_results]
+                
+                if top_results:
+                    relevant_context = "\n\nRelevant information:\n"
+                    for i, result in enumerate(top_results, 1):
+                        # AGGRESSIVE: Very short content snippets (400 chars max)
+                        content_length = 400
+                        relevant_context += f"\n{result['content'][:content_length]}\n"
+        
+        except Exception as e:
+            error_msg = str(e)
+            print(f"RAG search error: {error_msg}")
+            # Continue without RAG context if search fails
+        
+        # AGGRESSIVE OPTIMIZATION: Shorter prompts for faster processing
+        if use_general_query:
+            system_prompt = f"""Generate {request.num_questions} medical multiple-choice questions. Return ONLY JSON array:
+[{{"id":"q1","type":"single","text":"Question?","options":["A","B","C","D"],"correctIndex":0,"explanation":"Why correct"}}]"""
+            
+            user_prompt = f"""Based on: {relevant_context}\n\nGenerate {request.num_questions} diverse medical questions."""
+        else:
+            system_prompt = f"""Generate {request.num_questions} medical questions. Return ONLY JSON:
+[{{"id":"q1","type":"single","text":"Question?","options":["A","B","C","D"],"correctIndex":0,"explanation":"Why"}}]"""
+
+            user_prompt = f"""{query_text}\n\n{relevant_context}\n\nGenerate {request.num_questions} questions."""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        # AGGRESSIVE OPTIMIZATION: Use fastest model with minimal tokens
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Fastest and cheapest model
+            messages=messages,
+            max_tokens=800,  # Minimal tokens for fastest response
+            temperature=0.7,
+            stream=False
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Parse JSON response (handle markdown code blocks if present)
+        if ai_response.startswith("```json"):
+            ai_response = ai_response[7:]
+        if ai_response.startswith("```"):
+            ai_response = ai_response[3:]
+        if ai_response.endswith("```"):
+            ai_response = ai_response[:-3]
+        ai_response = ai_response.strip()
+        
+        try:
+            questions = json.loads(ai_response)
+            
+            # Validate and ensure questions have correct format
+            validated_questions = []
+            for i, q in enumerate(questions):
+                if not isinstance(q, dict):
+                    continue
+                
+                validated_q = {
+                    "id": q.get("id", f"q{i+1}"),
+                    "type": q.get("type", "single"),
+                    "text": q.get("text", ""),
+                    "options": q.get("options", []),
+                    "correctIndex": q.get("correctIndex", 0),
+                    "explanation": q.get("explanation", "")
+                }
+                
+                # Ensure we have exactly 4 options
+                if len(validated_q["options"]) != 4:
+                    continue
+                
+                # Ensure correctIndex is valid
+                if validated_q["correctIndex"] < 0 or validated_q["correctIndex"] >= 4:
+                    validated_q["correctIndex"] = 0
+                
+                validated_questions.append(validated_q)
+            
+            if not validated_questions:
+                raise ValueError("No valid questions generated")
+            
+            return {
+                "success": True,
+                "questions": validated_questions,
+                "num_generated": len(validated_questions)
+            }
+            
+        except json.JSONDecodeError as e:
+            print(f"JSON parsing error: {e}")
+            print(f"AI response: {ai_response}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error parsing generated questions. AI response: {ai_response[:200]}"
+            )
+        except Exception as e:
+            print(f"Error validating questions: {e}")
+            raise HTTPException(status_code=500, detail=f"Error validating generated questions: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating questions: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating questions: {str(e)}")
+
+# Learning Plan Management Endpoints
+class CreateLearningPlanRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    video_url: Optional[str] = None
+    video_title: Optional[str] = None
+    video_duration: Optional[int] = None
+    case_study: str
+    case_study_editable: bool = False
+    quiz_questions: List[Dict[str, Any]]
+    topic: Optional[str] = None
+    difficulty_level: Optional[str] = None
+    estimated_duration: Optional[int] = None
+
+@app.post("/api/learning-plans")
+async def create_or_get_learning_plan(
+    request: CreateLearningPlanRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new learning plan row for each generated question set"""
+    try:
+        user_id = current_user['user_id']
+        
+        # IMPORTANT: Always create a new learning plan row for each generated question set
+        # This ensures each set of questions is stored separately, similar to learning_plan_progress
+        # Each row will have a unique ID, so they can be distinguished even with the same title
+        
+        # Create new learning plan row
+        learning_plan = LearningPlan(
+            user_id=user_id,
+            title=request.title,
+            description=request.description,
+            video_url=request.video_url,
+            video_title=request.video_title,
+            video_duration=request.video_duration,
+            case_study=request.case_study,
+            case_study_editable=request.case_study_editable,
+            quiz_questions=request.quiz_questions,
+            topic=request.topic,
+            difficulty_level=request.difficulty_level,
+            estimated_duration=request.estimated_duration,
+            created_by=user_id
+        )
+        
+        db.add(learning_plan)
+        db.commit()
+        db.refresh(learning_plan)
+        
+        return {
+            "success": True,
+            "learning_plan_id": learning_plan.id,
+            "message": "Learning plan created successfully",
+            "is_new": True
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating learning plan: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating learning plan: {str(e)}")
+
+class SubmitQuizRequest(BaseModel):
+    learning_plan_id: int
+    quiz_answers: Dict[str, int]  # {questionId: answerIndex}
+    video_watched: Optional[bool] = False
+    case_study_read: Optional[bool] = False
+
+@app.post("/api/learning-plans/submit-quiz")
+async def submit_learning_plan_quiz(
+    request: SubmitQuizRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Submit quiz answers and save progress"""
+    try:
+        user_id = current_user['user_id']
+        
+        # Verify learning plan exists and belongs to user
+        learning_plan = db.query(LearningPlan).filter(
+            LearningPlan.id == request.learning_plan_id,
+            LearningPlan.user_id == user_id
+        ).first()
+        
+        if not learning_plan:
+            raise HTTPException(status_code=404, detail="Learning plan not found")
+        
+        # Calculate quiz score first
+        questions = learning_plan.quiz_questions
+        if not isinstance(questions, list):
+            questions = []
+        
+        correct = 0
+        total = len(questions)
+        
+        for question in questions:
+            question_id = question.get('id')
+            correct_index = question.get('correctIndex')
+            # Handle both string and int question IDs
+            user_answer = request.quiz_answers.get(str(question_id)) or request.quiz_answers.get(question_id)
+            
+            if user_answer is not None and user_answer == correct_index:
+                correct += 1
+        
+        percentage = (correct / total * 100) if total > 0 else 0
+        
+        # Calculate attempt count based on number of existing quiz submissions for this learning plan
+        attempt_count = db.query(LearningPlanProgress).filter(
+            LearningPlanProgress.user_id == user_id,
+            LearningPlanProgress.learning_plan_id == request.learning_plan_id,
+            LearningPlanProgress.quiz_submitted == True
+        ).count() + 1
+        
+        # Get or create a base progress record for tracking video/case study (non-quiz progress)
+        # We'll use the most recent one or create new if none exists
+        base_progress = db.query(LearningPlanProgress).filter(
+            LearningPlanProgress.user_id == user_id,
+            LearningPlanProgress.learning_plan_id == request.learning_plan_id
+        ).order_by(LearningPlanProgress.started_at.desc()).first()
+        
+        # Create a NEW row for this quiz submission
+        # This ensures each generated set of questions gets its own row
+        progress = LearningPlanProgress(
+            user_id=user_id,
+            learning_plan_id=request.learning_plan_id,
+            # Copy video/case study status from base progress if it exists
+            video_watched=base_progress.video_watched if base_progress else (request.video_watched or False),
+            video_watched_at=base_progress.video_watched_at if base_progress and base_progress.video_watched else None,
+            video_progress=base_progress.video_progress if base_progress else 0,
+            case_study_read=base_progress.case_study_read if base_progress else (request.case_study_read or False),
+            case_study_read_at=base_progress.case_study_read_at if base_progress and base_progress.case_study_read else None,
+            # Quiz-specific data for this submission
+            quiz_submitted=True,
+            quiz_submitted_at=func.now(),
+            quiz_answers=request.quiz_answers,  # Store answers directly (one set per row)
+            quiz_score=correct,
+            quiz_total=total,
+            quiz_percentage=percentage,
+            attempt_count=attempt_count,
+            last_accessed=func.now()
+        )
+        
+        # Update video and case study status if provided
+        if request.video_watched and not progress.video_watched:
+            progress.video_watched = True
+            progress.video_watched_at = func.now()
+        
+        if request.case_study_read and not progress.case_study_read:
+            progress.case_study_read = True
+            progress.case_study_read_at = func.now()
+        
+        # Mark as completed if all components are done
+        if progress.video_watched and progress.case_study_read and progress.quiz_submitted:
+            progress.completed = True
+            progress.completed_at = func.now()
+        
+        db.add(progress)
+        
+        db.commit()
+        db.refresh(progress)
+        
+        return {
+            "success": True,
+            "message": "Quiz submitted successfully",
+            "score": correct,
+            "total": total,
+            "percentage": float(percentage),
+            "completed": progress.completed
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error submitting quiz: {e}")
+        raise HTTPException(status_code=500, detail=f"Error submitting quiz: {str(e)}")
+
+@app.get("/api/learning-plans/{learning_plan_id}/progress")
+async def get_learning_plan_progress(
+    learning_plan_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user's progress for a specific learning plan - returns all quiz attempts"""
+    try:
+        user_id = current_user['user_id']
+        
+        # Get all progress records for this learning plan (each quiz submission is a row)
+        all_progress = db.query(LearningPlanProgress).filter(
+            LearningPlanProgress.user_id == user_id,
+            LearningPlanProgress.learning_plan_id == learning_plan_id
+        ).order_by(LearningPlanProgress.quiz_submitted_at.desc(), LearningPlanProgress.started_at.desc()).all()
+        
+        if not all_progress:
+            return {
+                "success": True,
+                "progress": None,
+                "quiz_attempts": [],
+                "message": "No progress found"
+            }
+        
+        # Get the most recent progress for video/case study status
+        latest_progress = all_progress[0]
+        
+        # Get all quiz attempts (rows where quiz was submitted)
+        quiz_attempts = []
+        for prog in all_progress:
+            if prog.quiz_submitted:
+                quiz_attempts.append({
+                    "id": prog.id,
+                    "quiz_submitted_at": prog.quiz_submitted_at.isoformat() if prog.quiz_submitted_at else None,
+                    "quiz_answers": prog.quiz_answers,
+                    "quiz_score": prog.quiz_score,
+                    "quiz_total": prog.quiz_total,
+                    "quiz_percentage": float(prog.quiz_percentage) if prog.quiz_percentage else None,
+                    "attempt_number": prog.attempt_count
+                })
+        
+        return {
+            "success": True,
+            "progress": {
+                "id": latest_progress.id,
+                "video_watched": latest_progress.video_watched,
+                "video_watched_at": latest_progress.video_watched_at.isoformat() if latest_progress.video_watched_at else None,
+                "video_progress": latest_progress.video_progress,
+                "case_study_read": latest_progress.case_study_read,
+                "case_study_read_at": latest_progress.case_study_read_at.isoformat() if latest_progress.case_study_read_at else None,
+                "completed": latest_progress.completed,
+                "completed_at": latest_progress.completed_at.isoformat() if latest_progress.completed_at else None,
+                "started_at": latest_progress.started_at.isoformat() if latest_progress.started_at else None,
+                "total_quiz_attempts": len(quiz_attempts)
+            },
+            "quiz_attempts": quiz_attempts  # All quiz submissions, each in its own row
+        }
+        
+    except Exception as e:
+        print(f"Error fetching progress: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching progress: {str(e)}")
 
 # Profile API Endpoints
 def _get_user_uuid(user_id):
