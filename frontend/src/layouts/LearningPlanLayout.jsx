@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import styled from "styled-components";
+import { supabase } from "../utils/supabaseClient";
 import defaultQuizBank from "../utils/learningPlanQuizQuestions";
 
 // ---------- Shared Layout ----------
@@ -455,40 +456,50 @@ export function CaseStudySection({
 // Quiz Section
 export function QuizSection({
   sectionTitle = "Knowledge Check",
-  questions, // topic-specific questions
+  questions: initialQuestions, // topic-specific questions
+  topic = null, // e.g., "Opioids", "Inhaled Anesthetics"
+  learningPlanTitle = null, // e.g., "Opioids", "Inhaled Anesthetics"
+  caseStudy = "", // Optional case study text
+  videoUrl = null, // Optional video URL
+  enableDatabase = true, // Enable database integration
+  numQuestions = 3, // Number of questions to generate
+  enableGenerateQuestions = true, // Enable question generation button
 }) {
+  const [questions, setQuestions] = useState(initialQuestions);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [learningPlanId, setLearningPlanId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [quizMapping, setQuizMapping] = useState({});
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [questionsError, setQuestionsError] = useState(null);
+
+  // Update questions when initialQuestions changes
+  useEffect(() => {
+    if (initialQuestions) {
+      setQuestions(initialQuestions);
+      // Reset answers when questions change
+      setAnswers({});
+      setSubmitted(false);
+    }
+  }, [initialQuestions]);
+
   const quiz = useMemo(() => {
     const source = questions ?? defaultQuizBank;
 
-    return source.map(q => {
-      const optionsWithIndex = q.options.map((opt, idx) => ({
-        label: opt,
-        originalIndex: idx,
-      }));
+    // No shuffling - keep options in original order
+    // This ensures the index the user clicks matches what gets stored in the database
+    const quizQuestions = source.map(q => ({
+      ...q,
+      options: q.options, // Keep original order
+      correctIndex: q.correctIndex, // Keep original correct index
+    }));
 
-      // shuffle options
-      for (let i = optionsWithIndex.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [optionsWithIndex[i], optionsWithIndex[j]] = [
-          optionsWithIndex[j],
-          optionsWithIndex[i],
-        ];
-      }
+    // No mapping needed since we're not shuffling
+    setQuizMapping({});
 
-      const newCorrectIndex = optionsWithIndex.findIndex(
-        opt => opt.originalIndex === q.correctIndex
-      );
-
-      return {
-        ...q,
-        options: optionsWithIndex.map(o => o.label),
-        correctIndex: newCorrectIndex,
-      };
-    });
+    return quizQuestions;
   }, [questions]);
-
-  const [answers, setAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
 
   const score = useMemo(() => {
     if (!submitted) return null;
@@ -501,14 +512,195 @@ export function QuizSection({
 
   const handleSelect = (qid, idx) => {
     if (submitted) return;
-    setAnswers(prev => ({ ...prev, [qid]: idx }));
+    setAnswers(prev => {
+      const newAnswers = { ...prev, [qid]: idx };
+      console.log(`Selected answer for ${qid}: index ${idx}`, {
+        question: quiz.find(q => q.id === qid),
+        newAnswers
+      });
+      return newAnswers;
+    });
   };
 
-  const handleSubmit = () => setSubmitted(true);
+  const createOrGetLearningPlan = useCallback(async (quizQuestions) => {
+    if (!enableDatabase) return null;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        return null;
+      }
+
+      const learningPlanData = {
+        title: learningPlanTitle || topic || "Learning Plan",
+        description: `Learning plan for ${topic || learningPlanTitle || "case study"}`,
+        video_url: videoUrl || null,
+        video_title: videoUrl ? "Lesson Video" : null,
+        case_study: caseStudy || "",
+        case_study_editable: false,
+        quiz_questions: quizQuestions,
+        topic: topic || null,
+      };
+
+      const response = await fetch("http://localhost:8000/api/learning-plans", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(learningPlanData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.learning_plan_id) {
+          setLearningPlanId(data.learning_plan_id);
+          return data.learning_plan_id;
+        }
+      }
+    } catch (error) {
+      console.error("Error creating learning plan:", error);
+    }
+    return null;
+  }, [enableDatabase, learningPlanTitle, topic, caseStudy, videoUrl]);
+
+  const handleSubmit = async () => {
+    if (submitted) return;
+    
+    setSubmitted(true);
+    
+    if (!enableDatabase) {
+      // Just show results without saving
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, quiz results not saved");
+        setIsSaving(false);
+        return;
+      }
+
+      // If we don't have a learning plan ID yet, create one first
+      let planId = learningPlanId;
+      if (!planId && questions) {
+        planId = await createOrGetLearningPlan(questions);
+      }
+
+      if (planId) {
+        // No mapping needed - answers are already in the correct format
+        // The index the user clicks directly corresponds to the original index
+        const originalAnswers = { ...answers };
+        
+        // Debug log to verify answers
+        console.log('Quiz submission:', {
+          userSelectedAnswers: answers,
+          submittedAnswers: originalAnswers,
+        });
+        
+        // Submit quiz results
+        const submitData = {
+          learning_plan_id: planId,
+          quiz_answers: originalAnswers,
+          video_watched: false,
+          case_study_read: false,
+        };
+
+        const submitResponse = await fetch("http://localhost:8000/api/learning-plans/submit-quiz", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(submitData)
+        });
+
+        if (submitResponse.ok) {
+          const submitResult = await submitResponse.json();
+          console.log("Quiz submitted successfully:", submitResult);
+        } else {
+          console.error("Failed to submit quiz");
+        }
+      } else {
+        console.warn("No learning plan ID, quiz results not saved");
+      }
+    } catch (error) {
+      console.error("Error submitting quiz:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleReset = () => {
     setAnswers({});
     setSubmitted(false);
+  };
+
+  const handleGenerateQuestions = async () => {
+    if (!enableGenerateQuestions || !topic) {
+      return;
+    }
+
+    setIsLoadingQuestions(true);
+    setQuestionsError(null);
+    // Reset answers immediately when generating new questions
+    setAnswers({});
+    setSubmitted(false);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session, cannot generate questions");
+        setQuestionsError("Please log in to generate questions");
+        setIsLoadingQuestions(false);
+        return;
+      }
+
+      const requestBody = {
+        num_questions: numQuestions,
+        topic: topic, // Use the topic prop (e.g., "Opioids" or "Inhaled Anesthetics")
+      };
+
+      const response = await fetch("http://localhost:8000/api/learning-plan/generate-questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.questions && data.questions.length > 0) {
+          setQuestions(data.questions);
+          // Ensure answers are reset
+          setAnswers({});
+          setSubmitted(false);
+
+          // Persist this new question set in the learning plan table
+          if (enableDatabase) {
+            const planId = await createOrGetLearningPlan(data.questions);
+            if (planId) {
+              setLearningPlanId(planId);
+            }
+          }
+        } else {
+          throw new Error("No questions generated");
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errorData.detail || "Failed to generate questions");
+      }
+    } catch (error) {
+      console.error("Error generating questions:", error);
+      setQuestionsError(error.message);
+    } finally {
+      setIsLoadingQuestions(false);
+    }
   };
 
   return (
@@ -516,10 +708,31 @@ export function QuizSection({
       <SectionHeader>
         <SectionTitleRow>
           <SectionTitle>{sectionTitle}</SectionTitle>
+          {enableGenerateQuestions && topic && (
+            <ActionButton
+              onClick={handleGenerateQuestions}
+              disabled={isLoadingQuestions}
+              style={{ marginLeft: 'auto', fontSize: '12px', padding: '6px 12px' }}
+            >
+              {isLoadingQuestions ? 'Generating...' : '🔄 Generate Questions'}
+            </ActionButton>
+          )}
         </SectionTitleRow>
       </SectionHeader>
 
       <Divider />
+      {isLoadingQuestions && (
+        <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+          <p>Generating questions based on {topic} materials...</p>
+        </div>
+      )}
+      {questionsError && (
+        <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', marginBottom: '16px', color: '#991b1b' }}>
+          <p style={{ margin: 0, fontSize: '14px' }}>
+            ⚠️ Could not generate questions: {questionsError}. Using default questions.
+          </p>
+        </div>
+      )}
       <QuizList>
         {quiz.map((q, qi) => (
           <QuestionCard key={q.id}>
@@ -559,9 +772,9 @@ export function QuizSection({
         <ActionButton
           $variant="primary"
           onClick={handleSubmit}
-          disabled={submitted}
+          disabled={submitted || isSaving}
         >
-          Submit Quiz
+          {isSaving ? "Saving..." : submitted ? "Submitted" : "Submit Quiz"}
         </ActionButton>
         <ActionButton onClick={handleReset}>Reset Answers</ActionButton>
         {submitted && score && (
