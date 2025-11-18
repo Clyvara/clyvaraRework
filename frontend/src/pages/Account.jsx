@@ -46,6 +46,13 @@ const Input = styled.input`
   border-radius: 8px;
   border: 1px solid #ddd;
   font-size: 14px;
+  background: white;
+  color: #000;
+  
+  &:read-only {
+    background: #f5f5f5;
+    color: #333;
+  }
 `;
 
 const Select = styled.select`
@@ -55,6 +62,12 @@ const Select = styled.select`
   border: 1px solid #ddd;
   font-size: 14px;
   background: white;
+  color: #000;
+  
+  option {
+    background: white;
+    color: #000;
+  }
 `;
 
 const Row = styled.div`

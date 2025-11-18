@@ -38,7 +38,14 @@ export default function InhaledAnestheticsLearningPlan() {
         ]}
       />
 
-      <QuizSection questions={learningPlanQuestions} />
+      <QuizSection 
+        questions={learningPlanQuestions}
+        topic="Inhaled Anesthetics"
+        learningPlanTitle="Inhaled Anesthetics"
+        caseStudy=""
+        videoUrl={Video1}
+        enableDatabase={true}
+      />
     </LearningPlanLayout>
   );
 }

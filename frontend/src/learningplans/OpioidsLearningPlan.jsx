@@ -33,7 +33,14 @@ export default function OpioidsLearningPlan() {
         ]}
       />
 
-      <QuizSection questions={learningPlanQuestions} />
+      <QuizSection 
+        questions={learningPlanQuestions}
+        topic="Opioids"
+        learningPlanTitle="Opioids"
+        caseStudy=""
+        videoUrl={Video1}
+        enableDatabase={true}
+      />
     </LearningPlanLayout>
   );
 }

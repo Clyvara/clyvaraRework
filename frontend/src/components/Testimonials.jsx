@@ -68,29 +68,59 @@ const Role = styled.div`
   color: #5a5a5a;
 `;
 
+const testimonialsData = [
+  {
+    quote: "Clyvara helped me turn an overwhelming syllabus into focused, high-yield study sessions.",
+    name: "— Aidan L.",
+    role: "2nd Year Medical Student",
+  },
+  {
+    quote: "I assign Clyvara to every student I coach—it's concise, evidence-based, and practical.",
+    name: "— Claryssa T.",
+    role: "CRNA & Clinical Educator",
+  },
+  {
+    quote: "The AI care plans feel like having a preceptor in my pocket.",
+    name: "— Kei O.",
+    role: "SRNA & Teaching Assistant",
+  },
+  {
+    quote: "From concept maps to quizzes, Clyvara keeps me accountable without the stress.",
+    name: "— Aidan L.",
+    role: "1st Year Medical Student",
+  },
+  {
+    quote: "As a program director, I trust Clyvara to keep our cohort synced and clinically ready.",
+    name: "— Claryssa T.",
+    role: "Program Director",
+  },
+  {
+    quote: "Clyvara turned my PDF uploads into flashcards and questions faster than I could do it manually.",
+    name: "— Kei O.",
+    role: "CRNA Resident",
+  },
+];
+
+const getRandomTestimonials = (count = 3) => {
+  const shuffled = [...testimonialsData].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+};
+
 const Testimonials = () => {
+  const testimonials = getRandomTestimonials();
+
   return (
     <Container>
       <Tagline>Trusted by students.</Tagline>
 
       <Grid>
-        <Card>
-          “Clyvara is good.”
-          <Name>— Aidan L.</Name>
-          <Role>2nd Year Medical Student</Role>
-        </Card>
-
-        <Card>
-          “Clyvara is good.”
-          <Name>— Aidan L.</Name>
-          <Role>2nd Year Medical Student</Role>
-        </Card>
-
-        <Card>
-          “Clyvara is good.”
-          <Name>— Aidan L.</Name>
-          <Role>2nd Year Medical Student</Role>
-        </Card>
+        {testimonials.map(({ quote, name, role }, idx) => (
+          <Card key={`${name}-${idx}`}>
+            {`“${quote}”`}
+            <Name>{name}</Name>
+            <Role>{role}</Role>
+          </Card>
+        ))}
       </Grid>
     </Container>
   );

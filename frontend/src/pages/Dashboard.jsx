@@ -266,14 +266,39 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
   const [userEmail, setUserEmail] = useState(null);
+  const [firstName, setFirstName] = useState(null);
 
   useEffect(() => {
-  const fetchUser = async () => {
-    const { data } = await supabase.auth.getUser();
-    setUserEmail(data?.user?.email ?? null);
-  };
-  fetchUser();
-}, []);
+    const fetchUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUserEmail(data?.user?.email ?? null);
+
+      // Fetch profile to get first name
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const response = await fetch('http://localhost:8000/api/profile/me', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        if (response.ok) {
+          const profileData = await response.json();
+          if (profileData.success && profileData.profile?.full_name) {
+            // Extract first name from full_name
+            const fullName = profileData.profile.full_name.trim();
+            const first = fullName.split(' ')[0];
+            setFirstName(first || null);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   useEffect(() => {
     loadMaterials();
@@ -444,9 +469,9 @@ export default function Dashboard() {
         </div>
       </Header>
 
-      {userEmail && (
+      {(firstName || userEmail) && (
       <WelcomeMessage>
-        <h2>Welcome back, {userEmail}!</h2>
+        <h2>Welcome back, {firstName || userEmail}!</h2>
       </WelcomeMessage>
     )}
 
