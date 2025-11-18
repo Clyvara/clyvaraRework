@@ -269,9 +269,9 @@ export default function Dashboard() {
   const [firstName, setFirstName] = useState(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUserEmail(data?.user?.email ?? null);
+  const fetchUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    setUserEmail(data?.user?.email ?? null);
 
       // Fetch profile to get first name
       try {
@@ -296,9 +296,9 @@ export default function Dashboard() {
       } catch (error) {
         console.error('Error fetching profile:', error);
       }
-    };
-    fetchUser();
-  }, []);
+  };
+  fetchUser();
+}, []);
 
   useEffect(() => {
     loadMaterials();
