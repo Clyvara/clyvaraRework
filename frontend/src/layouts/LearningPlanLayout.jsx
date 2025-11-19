@@ -1,7 +1,6 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import styled from "styled-components";
 import { supabase } from "../utils/supabaseClient";
-import defaultQuizBank from "../utils/learningPlanQuizQuestions";
 
 // ---------- Shared Layout ----------
 const PageWrapper = styled.div`
@@ -465,7 +464,8 @@ export function QuizSection({
   numQuestions = 3, // Number of questions to generate
   enableGenerateQuestions = true, // Enable question generation button
 }) {
-  const [questions, setQuestions] = useState(initialQuestions);
+  // Start with null questions - only show quiz after generation
+  const [questions, setQuestions] = useState(null);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [learningPlanId, setLearningPlanId] = useState(null);
@@ -474,22 +474,17 @@ export function QuizSection({
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [questionsError, setQuestionsError] = useState(null);
 
-  // Update questions when initialQuestions changes
-  useEffect(() => {
-    if (initialQuestions) {
-      setQuestions(initialQuestions);
-      // Reset answers when questions change
-      setAnswers({});
-      setSubmitted(false);
-    }
-  }, [initialQuestions]);
+  // Don't use initialQuestions - we want to start blank
 
   const quiz = useMemo(() => {
-    const source = questions ?? defaultQuizBank;
+    // Only use questions if they exist (after generation)
+    if (!questions || questions.length === 0) {
+      return [];
+    }
 
     // No shuffling - keep options in original order
     // This ensures the index the user clicks matches what gets stored in the database
-    const quizQuestions = source.map(q => ({
+    const quizQuestions = questions.map(q => ({
       ...q,
       options: q.options, // Keep original order
       correctIndex: q.correctIndex, // Keep original correct index
@@ -542,7 +537,7 @@ export function QuizSection({
         topic: topic || null,
       };
 
-      const response = await fetch("http://localhost:8000/api/learning-plans", {
+      const response = await fetch("/api/learning-plans", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -609,7 +604,7 @@ export function QuizSection({
           case_study_read: false,
         };
 
-        const submitResponse = await fetch("http://localhost:8000/api/learning-plans/submit-quiz", {
+        const submitResponse = await fetch("/api/learning-plans/submit-quiz", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -664,7 +659,7 @@ export function QuizSection({
         topic: topic, // Use the topic prop (e.g., "Opioids" or "Inhaled Anesthetics")
       };
 
-      const response = await fetch("http://localhost:8000/api/learning-plan/generate-questions", {
+      const response = await fetch("/api/learning-plan/generate-questions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -729,61 +724,74 @@ export function QuizSection({
       {questionsError && (
         <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', marginBottom: '16px', color: '#991b1b' }}>
           <p style={{ margin: 0, fontSize: '14px' }}>
-            ⚠️ Could not generate questions: {questionsError}. Using default questions.
+            ⚠️ Could not generate questions: {questionsError}
           </p>
         </div>
       )}
-      <QuizList>
-        {quiz.map((q, qi) => (
-          <QuestionCard key={q.id}>
-            <QuestionText>
-              {qi + 1}. {q.text}
-            </QuestionText>
+      {!questions || questions.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+          <p style={{ fontSize: '16px', marginBottom: '12px' }}>
+            No questions available yet.
+          </p>
+          <p style={{ fontSize: '14px', color: '#94a3b8' }}>
+            Click "Generate Questions" above to create topic-specific questions based on your materials.
+          </p>
+        </div>
+      ) : (
+        <>
+          <QuizList>
+            {quiz.map((q, qi) => (
+              <QuestionCard key={q.id}>
+                <QuestionText>
+                  {qi + 1}. {q.text}
+                </QuestionText>
 
-            {q.options.map((opt, idx) => (
-              <OptionRow key={idx} htmlFor={`${q.id}-${idx}`}>
-                <HiddenRadio
-                  id={`${q.id}-${idx}`}
-                  name={q.id}
-                  checked={answers[q.id] === idx}
-                  onChange={() => handleSelect(q.id, idx)}
-                />
-                <Bubble>
-                  <BubbleDot />
-                </Bubble>
-                <span>{opt}</span>
-              </OptionRow>
+                {q.options.map((opt, idx) => (
+                  <OptionRow key={idx} htmlFor={`${q.id}-${idx}`}>
+                    <HiddenRadio
+                      id={`${q.id}-${idx}`}
+                      name={q.id}
+                      checked={answers[q.id] === idx}
+                      onChange={() => handleSelect(q.id, idx)}
+                    />
+                    <Bubble>
+                      <BubbleDot />
+                    </Bubble>
+                    <span>{opt}</span>
+                  </OptionRow>
+                ))}
+
+                {submitted && (
+                  <Feedback $correct={answers[q.id] === q.correctIndex}>
+                    {answers[q.id] === q.correctIndex
+                      ? "✅ Correct."
+                      : "❌ Not quite."}{" "}
+                    {q.explanation}
+                  </Feedback>
+                )}
+              </QuestionCard>
             ))}
+          </QuizList>
 
-            {submitted && (
-              <Feedback $correct={answers[q.id] === q.correctIndex}>
-                {answers[q.id] === q.correctIndex
-                  ? "✅ Correct."
-                  : "❌ Not quite."}{" "}
-                {q.explanation}
-              </Feedback>
+          <Divider />
+          <ActionsRow>
+            <ActionButton
+              $variant="primary"
+              onClick={handleSubmit}
+              disabled={submitted || isSaving}
+            >
+              {isSaving ? "Saving..." : submitted ? "Submitted" : "Submit Quiz"}
+            </ActionButton>
+            <ActionButton onClick={handleReset}>Reset Answers</ActionButton>
+            {submitted && score && (
+              <span style={{ color: "#0f172a", fontWeight: 600 }}>
+                Score: {score.correct} / {score.total} (
+                {Math.round((score.correct / score.total) * 100)}%)
+              </span>
             )}
-          </QuestionCard>
-        ))}
-      </QuizList>
-
-      <Divider />
-      <ActionsRow>
-        <ActionButton
-          $variant="primary"
-          onClick={handleSubmit}
-          disabled={submitted || isSaving}
-        >
-          {isSaving ? "Saving..." : submitted ? "Submitted" : "Submit Quiz"}
-        </ActionButton>
-        <ActionButton onClick={handleReset}>Reset Answers</ActionButton>
-        {submitted && score && (
-          <span style={{ color: "#0f172a", fontWeight: 600 }}>
-            Score: {score.correct} / {score.total} (
-            {Math.round((score.correct / score.total) * 100)}%)
-          </span>
-        )}
-      </ActionsRow>
+          </ActionsRow>
+        </>
+      )}
     </SectionCard>
   );
 }

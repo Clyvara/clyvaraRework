@@ -2733,6 +2733,13 @@ class GenerateQuestionsRequest(BaseModel):
     topic: Optional[str] = None
     num_questions: int = 3
 
+print("Loading learning plan endpoints...")
+
+@app.get("/test-learning-plan")
+def test_learning_plan_endpoint():
+    """Test endpoint to verify route registration"""
+    return {"message": "Learning plan endpoint is working"}
+
 @app.post("/api/learning-plan/generate-questions")
 async def generate_learning_plan_questions(
     request: GenerateQuestionsRequest,

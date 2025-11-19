@@ -5,7 +5,6 @@ import {
   CaseStudySection,
   QuizSection,
 } from "../layouts/LearningPlanLayout";
-import learningPlanQuestions from "../utils/learningPlanQuizQuestions";
 import Video1 from "../assets/videos/Opioid1.mp4";
 import Video2 from "../assets/videos/Opioid2.mp4";
 
@@ -34,12 +33,12 @@ export default function OpioidsLearningPlan() {
       />
 
       <QuizSection 
-        questions={learningPlanQuestions}
         topic="Opioids"
         learningPlanTitle="Opioids"
         caseStudy=""
         videoUrl={Video1}
         enableDatabase={true}
+        enableGenerateQuestions={true}
       />
     </LearningPlanLayout>
   );
