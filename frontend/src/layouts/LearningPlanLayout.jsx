@@ -1,3 +1,5 @@
+//general layout page for all learning plans
+
 import React, { useMemo, useState, useCallback } from "react";
 import styled from "styled-components";
 import { supabase } from "../utils/supabaseClient";

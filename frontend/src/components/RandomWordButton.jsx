@@ -1,4 +1,5 @@
-// RandomWordButton.jsx
+// feature used for testing
+
 import { useState } from "react";
 
 export default function RandomWordButton() {

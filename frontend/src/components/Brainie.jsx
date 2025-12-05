@@ -1,3 +1,5 @@
+//brainie logo
+
 import React from "react";
 import styled from "styled-components";
 import brainie from "../assets/brainie.png";

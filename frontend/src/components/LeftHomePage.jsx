@@ -1,3 +1,5 @@
+//left half of the landing page
+
 import styled from "styled-components";
 import { Link } from "react-router-dom";
 

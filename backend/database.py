@@ -1,3 +1,5 @@
+#populated database schemas
+
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Boolean, DECIMAL, Text, text, Numeric
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker

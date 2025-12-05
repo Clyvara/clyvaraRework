@@ -1,3 +1,5 @@
+//brainie chatbot assistant feature
+
 import { useEffect, useRef, useState, useMemo } from "react";
 import styled from "styled-components";
 import { buildDomManifest, summarizePageContext } from "../utils/pageContext.js";
