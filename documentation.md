@@ -89,5 +89,3 @@ Built with **React + Vite**, containing all UI logic, routing, and component str
   Must be committed to version control.
 
 ---
-
-If you'd like, I can transform this into a **full polished README.md** with installation instructions, tech stack badges, screenshots, and setup steps for dev environments.
