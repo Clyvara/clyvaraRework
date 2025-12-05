@@ -27,6 +27,9 @@ This project consists of a **React + Vite frontend** and a **FastAPI + Python ba
 - After reviewing the lesson/module content, users can generate **quiz questions** tailored to what they just studied.
 - Powered by **OpenAI** and integrated tightly with the learning plan content.
 
+### **Anesthesia Careplan**
+- Users can input medical diagnosis information into careplan (be sure to populate all required fields at minimum)
+- once form is filled out, generate AI careplan recommendations to assist treatment/diagnosis
 ---
 
 ## 🖥️ Backend (`backend/`)
