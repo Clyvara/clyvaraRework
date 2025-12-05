@@ -29,7 +29,7 @@ This project consists of a **React + Vite frontend** and a **FastAPI + Python ba
 
 ### **Anesthesia Careplan**
 - Users can input medical diagnosis information into careplan (be sure to populate all required fields at minimum)
-- once form is filled out, generate AI careplan recommendations to assist treatment/diagnosis
+- Once form is filled out, generate AI careplan recommendations to assist treatment/diagnosis
 ---
 
 ## 🖥️ Backend (`backend/`)
