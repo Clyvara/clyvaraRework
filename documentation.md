@@ -43,7 +43,7 @@ The backend is responsible for all server-side logic, external integrations, aut
 
 ## 🎨 Frontend (`frontend/`)
 
-The frontend is built with **React + Vite** and holds all user-facing UI, routing, and component logic.
+The frontend is built with **React + Vite** and holds all user-facing UI, routing, and component logic. We use the React library 'Styled Components' to integrate CSS with JavaScript.
 
 ### **Directory Overview**
 - **`src/`**  
