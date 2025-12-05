@@ -1,7 +1,7 @@
 # 📁 Project Structure Documentation  
 **Last Updated:** 12/5/25  
 
-This project consists of a **React + Vite frontend** and a **FastAPI + Python backend**, organized into two main directories. Below is a clean overview of the full structure, runtime behavior, and services used.
+This project consists of a **React + Vite frontend** and a **FastAPI + Python backend**, organized into two main directories. Below is a clean overview of the full structure, runtime behavior, and features.
 
 ---
 
@@ -11,66 +11,83 @@ This project consists of a **React + Vite frontend** and a **FastAPI + Python ba
 - **Global styling** is defined in:
   - `app.css` or  
   - `index.css`
+- **Styled Components**  
+  We use the React library **Styled Components** to integrate CSS directly within JavaScript, enabling dynamic styling tied to component logic.
+
+---
+
+## 🧠 Core Features
+
+### **Dashboard**
+- Users can **upload study materials directly from their device**.
+- Uploaded files are processed and stored so students can review and study them inside **Clyvara**.
+
+### **Learning Plans**
+- Each learning plan page includes **AI quiz generation** at the bottom.  
+- After reviewing the lesson/module content, users can generate **quiz questions** tailored to what they just studied.
+- Powered by **OpenAI** and integrated tightly with the learning plan content.
 
 ---
 
 ## 🖥️ Backend (`backend/`)
 
-The backend is responsible for all server-side logic, external integrations, authentication, and API routing.
+Handles all server-side logic, API routing, authentication, schemas, and AI integration.
 
 ### **Technologies & Integrations**
-- **Supabase**  
-  Handles all **user authentication** (login + signup flows).  
-
-- **AWS**  
-  Stores and manages **backend schemas**, including data models and storage layers.
-
-- **OpenAI**  
-  Powers the **Brainie assistant** and supports AI logic for the **Anesthesia Care Plan module**.
+- **Supabase** — manages all **user authentication** (login/signup)  
+- **AWS** — stores all **backend schemas** and data structures  
+- **OpenAI** — powers:
+  - The **Brainie assistant**  
+  - AI features used in the **Anesthesia Care Plan**  
+  - AI quiz question generation for learning plans  
 
 ### **Key Files & Directories**
 - **`roadmaps/`**  
-  High-level documentation of backend architecture and component interactions.
+  High-level documentation of backend workflow and structure.
 
 - **`.env`**  
-  Stores all environment secrets and API keys.  
-  ⚠️ *Never commit this to Git.*
+  Stores all secret environment variables.  
+  ⚠️ *Never commit this file.*
 
 - **`systemprompt.txt`**  
-  Defines the OpenAI system prompt that shapes the AI’s behavior across the care plan features.
+  Defines the system prompt used by OpenAI to guide AI behavior.
 
 ---
 
 ## 🎨 Frontend (`frontend/`)
 
-The frontend is built with **React + Vite** and holds all user-facing UI, routing, and component logic. We use the React library 'Styled Components' to integrate CSS with JavaScript.
+Built with **React + Vite**, containing all UI logic, routing, and component structures.
 
 ### **Directory Overview**
 - **`src/`**  
-  Primary folder containing pages, components, hooks, and routing.
+  Contains all React logic, UI components, routes, and hooks.
 
 - **`app.jsx`**  
-  The main entry point for all client-side routing.
+  The main entry point for **frontend routing**.
 
 - **`assets/`**  
-  Holds:
-  - Learning plan module content  
-  - Images, icons, and logos used across the UI  
+  Houses:
+  - Learning plan content  
+  - All images, icons, and logos used across the UI  
 
 - **`components/`**  
-  Reusable visual and interactive components used throughout the app.
+  Collection of reusable UI building blocks used throughout the application.
 
 - **`layouts/`**  
-  Shared layout structures to ensure consistent formatting across pages.
+  Standard layout components ensuring consistent design patterns across pages.
 
 ---
 
 ## 📦 Miscellaneous
 
 - **`node_modules/`**  
-  Contains all third-party packages required to run the frontend.  
-  Automatically generated — do *not* edit or commit manually.
+  Contains all dependency packages required for the frontend to run.  
+  Automatically generated — do *not* modify manually.
 
 - **`package-lock.json`**  
-  Ensures consistent dependency versions across environments.  
-  Required for stable installs and should always remain in version control.
+  Ensures consistent dependency versions for all developers.  
+  Must be committed to version control.
+
+---
+
+If you'd like, I can transform this into a **full polished README.md** with installation instructions, tech stack badges, screenshots, and setup steps for dev environments.
