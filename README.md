@@ -58,3 +58,10 @@ npm run dev
 - Make sure both backend and frontend servers are running for full functionality.  
 - Commit changes only from feature branches — open a PR to merge into `main`.  
 - Use the `.env.example` format (if present) for consistent environment setup.
+
+---
+
+
+
+
+
