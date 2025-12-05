@@ -53,4 +53,3 @@ The frontend is built using **React + Vite** and includes all user interface com
 
 ---
 
-Let me know if you want a **file tree**, **diagram**, or a more polished README section!
