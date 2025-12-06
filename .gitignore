@@ -57,3 +57,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# --------------------
+# Application Cache
+# --------------------
+backend/.material_cache/
